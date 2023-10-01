@@ -2,7 +2,7 @@ use atlas_common::channel;
 use atlas_common::channel::{ChannelSyncRx, ChannelSyncTx};
 use atlas_common::error::*;
 use atlas_common::node_id::NodeId;
-use atlas_execution::serialize::ApplicationData;
+use atlas_smr_application::serialize::ApplicationData;
 use atlas_core::serialize::ClientServiceMsg;
 use std::sync::Arc;
 use atlas_communication::FullNetworkNode;
