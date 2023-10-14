@@ -7,7 +7,7 @@ use atlas_common::node_id::NodeId;
 use atlas_common::ordering::SeqNo;
 use atlas_communication::{ NodeConnections};
 use atlas_communication::protocol_node::ProtocolNetworkNode;
-use atlas_execution::serialize::ApplicationData;
+use atlas_smr_application::serialize::ApplicationData;
 use atlas_core::messages::{RequestMessage, SystemMessage};
 use atlas_core::serialize::{ClientMessage, ClientServiceMsg};
 

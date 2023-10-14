@@ -28,8 +28,8 @@ use atlas_core::ordering_protocol::reconfigurable_order_protocol::Reconfigurable
 use atlas_core::reconfiguration_protocol::{QuorumUpdateMessage, ReconfigurableNodeTypes, ReconfigurationProtocol};
 use atlas_core::serialize::{ClientMessage, ClientServiceMsg};
 use atlas_core::timeouts::Timeouts;
-use atlas_execution::serialize::ApplicationData;
-use atlas_execution::system_params::SystemParams;
+use atlas_smr_application::serialize::ApplicationData;
+use atlas_smr_application::system_params::SystemParams;
 use atlas_metrics::benchmarks::ClientPerf;
 use atlas_metrics::metrics::{metric_duration, metric_increment};
 
