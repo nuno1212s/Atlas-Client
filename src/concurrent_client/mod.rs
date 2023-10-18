@@ -1,19 +1,19 @@
+use std::sync::Arc;
+
 use atlas_common::channel;
 use atlas_common::channel::{ChannelSyncRx, ChannelSyncTx};
 use atlas_common::error::*;
 use atlas_common::node_id::NodeId;
-use atlas_smr_application::serialize::ApplicationData;
-use atlas_core::serialize::ClientServiceMsg;
-use std::sync::Arc;
 use atlas_communication::FullNetworkNode;
-use atlas_communication::protocol_node::ProtocolNetworkNode;
 use atlas_core::ordering_protocol::OrderProtocolTolerance;
-use atlas_core::ordering_protocol::reconfigurable_order_protocol::ReconfigurableOrderProtocol;
 use atlas_core::reconfiguration_protocol::ReconfigurationProtocol;
+use atlas_core::serialize::ClientServiceMsg;
 use atlas_reconfiguration::message::ReconfData;
 use atlas_reconfiguration::network_reconfig::NetworkInfo;
-use crate::client::ClientData;
+use atlas_smr_application::serialize::ApplicationData;
+
 use crate::client::{Client, ClientConfig, ClientType, register_callback, RequestCallback};
+use crate::client::ClientData;
 
 /// A client implementation that will automagically manage all of the sessions required, reutilizing them
 /// as much as possible

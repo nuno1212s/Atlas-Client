@@ -20,18 +20,17 @@ use atlas_common::crypto::hash::Digest;
 use atlas_common::error::*;
 use atlas_common::node_id::NodeId;
 use atlas_common::ordering::{Orderable, SeqNo};
-use atlas_communication::{FullNetworkNode, NodeConnections};
+use atlas_common::system_params::SystemParams;
+use atlas_communication::{FullNetworkNode};
 use atlas_communication::protocol_node::{NodeIncomingRqHandler, ProtocolNetworkNode};
 use atlas_core::messages::{Message, ReplyMessage, SystemMessage};
 use atlas_core::ordering_protocol::OrderProtocolTolerance;
-use atlas_core::ordering_protocol::reconfigurable_order_protocol::ReconfigurableOrderProtocol;
 use atlas_core::reconfiguration_protocol::{QuorumUpdateMessage, ReconfigurableNodeTypes, ReconfigurationProtocol};
 use atlas_core::serialize::{ClientMessage, ClientServiceMsg};
 use atlas_core::timeouts::Timeouts;
-use atlas_execution::serialize::ApplicationData;
-use atlas_execution::system_params::SystemParams;
 use atlas_metrics::benchmarks::ClientPerf;
 use atlas_metrics::metrics::{metric_duration, metric_increment};
+use atlas_smr_application::serialize::ApplicationData;
 
 use crate::metric::{CLIENT_RQ_DELIVER_RESPONSE_ID, CLIENT_RQ_LATENCY_ID, CLIENT_RQ_PER_SECOND_ID, CLIENT_RQ_RECV_PER_SECOND_ID, CLIENT_RQ_RECV_TIME_ID, CLIENT_RQ_SEND_TIME_ID, CLIENT_RQ_TIMEOUT_ID};
 
