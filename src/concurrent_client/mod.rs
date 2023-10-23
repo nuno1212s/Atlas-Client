@@ -33,7 +33,7 @@ impl<RF, D, NT> ConcurrentClient<RF, D, NT>
     pub async fn boostrap_client<ROP>(cfg: ClientConfig<RF, D, NT>, session_limit: usize) -> Result<Self> where
         NT: FullNetworkNode<RF::InformationProvider, RF::Serialization, ClientServiceMsg<D>>,
         ROP: OrderProtocolTolerance + 'static {
-        let (tx, rx) = channel::new_bounded_sync(session_limit);
+        let (tx, rx) = channel::new_bounded_sync(session_limit, None);
 
         let client = Client::bootstrap::<ROP>(cfg).await?;
 
@@ -57,7 +57,7 @@ impl<RF, D, NT> ConcurrentClient<RF, D, NT>
     /// Creates a new concurrent client, from an already existing client
     pub fn from_client(client: Client<RF, D, NT>, session_limit: usize) -> Result<Self>
         where NT: FullNetworkNode<NetworkInfo, ReconfData, ClientServiceMsg<D>> {
-        let (tx, rx) = channel::new_bounded_sync(session_limit);
+        let (tx, rx) = channel::new_bounded_sync(session_limit, None);
 
         let id = client.id();
         let data = client.client_data().clone();

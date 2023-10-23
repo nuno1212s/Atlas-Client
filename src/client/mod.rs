@@ -290,12 +290,12 @@ impl<D, RP, NT> Client<RP, D, NT>
 
         let default_timeout = Duration::from_secs(3);
 
-        let (exec_tx, exec_rx) = channel::new_bounded_sync(128);
+        let (exec_tx, exec_rx) = channel::new_bounded_sync(128, Some("Executor Channel"));
 
         let timeouts = Timeouts::new::<D>(node.id(), Duration::from_millis(1),
                                           default_timeout, exec_tx.clone());
 
-        let (reconf_tx, reconf_rx) = channel::new_bounded_sync(128);
+        let (reconf_tx, reconf_rx) = channel::new_bounded_sync(128,Some("Reconfiguration Channel"));
 
         // TODO: Make timeouts actually work properly with the clients (including making the normal
         //timeouts utilize this same system)
