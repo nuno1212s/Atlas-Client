@@ -13,6 +13,8 @@ serialize_capnp = ["atlas-core/serialize_capnp", "atlas-smr-application/serializ
 default = ["serialize_serde"]
 
 [dependencies]
+anyhow = "1.0.75"
+thiserror = "1.0.50"
 log = "*"
 intmap = "*"
 futures-timer = "*"

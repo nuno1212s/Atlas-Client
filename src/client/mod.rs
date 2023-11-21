@@ -9,12 +9,14 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 use std::time::Instant;
+use anyhow::Error;
 
 use futures_timer::Delay;
 use intmap::IntMap;
 use log::{debug, error, info};
+use thiserror::Error;
 
-use atlas_common::{async_runtime, channel};
+use atlas_common::{async_runtime, channel, Err};
 use atlas_common::channel::ChannelSyncRx;
 use atlas_common::crypto::hash::Digest;
 use atlas_common::error::*;
@@ -317,7 +319,7 @@ impl<D, RP, NT> Client<RP, D, NT>
                 }
             }
             Err(err) => {
-                return Err(Error::simple_with_msg(ErrorKind::ReconfigurationNotStable, format!("Error receiving reconfiguration message: {:?}", err).as_str()));
+                return Err!(ClientError::from(err));
             }
         }
 
@@ -727,8 +729,7 @@ impl<D, RP, NT> Client<RP, D, NT>
 
         let request = ready_lock.get_mut(request_key);
 
-        let err_msg = Err("Could not get f+1 equal responses, failed to execute the request")
-            .wrapped(ErrorKind::CoreClient);
+        let err_msg = Err!(ClientError::UnequalResponses);
 
         if let Some(request) = request {
             match request {
@@ -1002,4 +1003,16 @@ impl<'a, T> IntMapEntry<'a, T> {
 
         certain!(map.get_mut(key))
     }
+}
+
+#[derive(Error, Debug)]
+pub enum ClientError {
+    #[error("Could not get f + 1 equal responses")]
+    UnequalResponses,
+    #[error("Error receiving reconfiguration message: {0:?}")]
+    ReconfigurationState(#[from] Error),
+    #[error("Failed connecting to node {0:?}")]
+    AlreadyConnectingToNode(NodeId),
+    #[error("Failed, already connected to node {0:?}")]
+    AlreadyConnectedToNode(NodeId)
 }

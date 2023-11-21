@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use std::sync::{Mutex};
+use atlas_common::Err;
 
 use atlas_common::error::*;
 use atlas_common::node_id::NodeId;
@@ -11,7 +12,7 @@ use atlas_smr_application::serialize::ApplicationData;
 use atlas_core::messages::{RequestMessage, SystemMessage};
 use atlas_core::serialize::{ClientMessage, ClientServiceMsg};
 
-use super::{Client, ClientType};
+use super::{Client, ClientError, ClientType};
 
 pub enum UnorderedClientMode {
     ///BFT Client mode
@@ -59,8 +60,7 @@ impl<RF, D, NT> Client<RF, D, NT>
             let connecting = self.data.follower_data.connecting_followers.lock().unwrap();
 
             if connecting.contains(&node_id) {
-                return Err("Already connecting to the provided follower.")
-                    .wrapped(ErrorKind::CoreClientUnorderedClient);
+                return Err!(ClientError::AlreadyConnectingToNode(node_id));
             }
         }
 
@@ -68,8 +68,7 @@ impl<RF, D, NT> Client<RF, D, NT>
             let connected = self.data.follower_data.connected_followers.lock().unwrap();
 
             if connected.contains(&node_id) {
-                return Err("Already connected to the provided follower.")
-                    .wrapped(ErrorKind::CoreClientUnorderedClient);
+                return Err!(ClientError::AlreadyConnectedToNode(node_id));
             }
         }
 
@@ -113,6 +112,7 @@ impl<RF, D, NT> ClientType<RF, D, NT> for Unordered
     type Iter = impl Iterator<Item=NodeId>;
 
     fn init_targets(client: &Client<RF, D, NT>) -> (Self::Iter, usize) {
+        /*
         //TODO: Atm we are using all followers, we should choose a small number of them and
         // Send it to those. (Maybe the ones that are closes? TBD)
         let connected_followers: Vec<NodeId> = client
@@ -134,6 +134,12 @@ impl<RF, D, NT> ClientType<RF, D, NT> for Unordered
 
             return (connected.into_iter(), client.params.n());
         };
+        */
+        let quorum = client.get_quorum_view();
+
+        let quorum_len = quorum.len();
+
+        (quorum.into_iter(), quorum_len)
     }
 
     fn needed_responses(client: &Client<RF, D, NT>) -> usize {

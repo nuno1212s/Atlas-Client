@@ -41,10 +41,10 @@ impl<RF, D, NT> ConcurrentClient<RF, D, NT>
         let data = client.client_data().clone();
 
         for _ in 1..session_limit {
-            tx.send(client.clone()).wrapped(ErrorKind::CommunicationChannelCrossbeam)?;
+            tx.send(client.clone())?;
         }
 
-        tx.send(client).wrapped(ErrorKind::CommunicationChannelCrossbeam)?;
+        tx.send(client)?;
 
         Ok(Self {
             id: id,
@@ -63,10 +63,10 @@ impl<RF, D, NT> ConcurrentClient<RF, D, NT>
         let data = client.client_data().clone();
 
         for _ in 1..session_limit {
-            tx.send(client.clone()).wrapped(ErrorKind::CommunicationChannelCrossbeam)?;
+            tx.send(client.clone())?;
         }
 
-        tx.send(client).wrapped(ErrorKind::CommunicationChannelCrossbeam)?;
+        tx.send(client)?;
 
         Ok(Self {
             id: id,
@@ -82,7 +82,7 @@ impl<RF, D, NT> ConcurrentClient<RF, D, NT>
     }
 
     fn get_session(&self) -> Result<Client<RF, D, NT>> {
-        self.sessions.recv().wrapped(ErrorKind::CommunicationChannelCrossbeam)
+        self.sessions.recv()
     }
 
     /// Updates the replicated state of the application running
@@ -93,7 +93,7 @@ impl<RF, D, NT> ConcurrentClient<RF, D, NT>
 
         let result = session.update::<T>(request).await;
 
-        self.session_return.send(session).wrapped(ErrorKind::CommunicationChannelCrossbeam)?;
+        self.session_return.send(session)?;
 
         result
     }
@@ -119,7 +119,7 @@ impl<RF, D, NT> ConcurrentClient<RF, D, NT>
         let callback = Box::new(move |reply| {
             callback(reply);
 
-            session_return.send(session).wrapped(ErrorKind::CommunicationChannelCrossbeam).unwrap();
+            session_return.send(session)?;
         });
 
         register_callback(session_id, request_key, &*self.client_data, callback);
