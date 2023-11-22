@@ -10,6 +10,7 @@ use atlas_communication::{ NodeConnections};
 use atlas_communication::protocol_node::ProtocolNetworkNode;
 use atlas_smr_application::serialize::ApplicationData;
 use atlas_core::messages::{RequestMessage, SystemMessage};
+use atlas_core::reconfiguration_protocol::ReconfigurationProtocol;
 use atlas_core::serialize::{ClientMessage, ClientServiceMsg};
 
 use super::{Client, ClientError, ClientType};
@@ -50,6 +51,7 @@ impl FollowerData {
 impl<RF, D, NT> Client<RF, D, NT>
     where
         D: ApplicationData + 'static,
+        RF: ReconfigurationProtocol + 'static,
 {
     ///Connect to a follower with a given node id
     ///
@@ -99,6 +101,7 @@ pub struct Unordered;
 impl<RF, D, NT> ClientType<RF, D, NT> for Unordered
     where
         D: ApplicationData + 'static,
+        RF: ReconfigurationProtocol + 'static,
 {
     fn init_request(
         session_id: SeqNo,

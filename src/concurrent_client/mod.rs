@@ -1,6 +1,6 @@
 use std::sync::Arc;
-
-use atlas_common::channel;
+use log::error;
+use atlas_common::{channel, quiet_unwrap};
 use atlas_common::channel::{ChannelSyncRx, ChannelSyncTx};
 use atlas_common::error::*;
 use atlas_common::node_id::NodeId;
@@ -41,10 +41,10 @@ impl<RF, D, NT> ConcurrentClient<RF, D, NT>
         let data = client.client_data().clone();
 
         for _ in 1..session_limit {
-            tx.send(client.clone())?;
+            tx.send_return(client.clone())?;
         }
 
-        tx.send(client)?;
+        tx.send_return(client)?;
 
         Ok(Self {
             id: id,
@@ -63,10 +63,10 @@ impl<RF, D, NT> ConcurrentClient<RF, D, NT>
         let data = client.client_data().clone();
 
         for _ in 1..session_limit {
-            tx.send(client.clone())?;
+            tx.send_return(client.clone())?;
         }
 
-        tx.send(client)?;
+        tx.send_return(client)?;
 
         Ok(Self {
             id: id,
@@ -93,7 +93,7 @@ impl<RF, D, NT> ConcurrentClient<RF, D, NT>
 
         let result = session.update::<T>(request).await;
 
-        self.session_return.send(session)?;
+        self.session_return.send_return(session)?;
 
         result
     }
@@ -119,7 +119,7 @@ impl<RF, D, NT> ConcurrentClient<RF, D, NT>
         let callback = Box::new(move |reply| {
             callback(reply);
 
-            session_return.send(session)?;
+            quiet_unwrap!(session_return.send(session));
         });
 
         register_callback(session_id, request_key, &*self.client_data, callback);
