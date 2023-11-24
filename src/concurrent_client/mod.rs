@@ -30,16 +30,17 @@ impl<RF, D, NT> ConcurrentClient<RF, D, NT>
     where D: ApplicationData + 'static,
           RF: ReconfigurationProtocol, NT: 'static {
     /// Creates a new concurrent client, with the given configuration
-    pub async fn boostrap_client<ROP>(cfg: ClientConfig<RF, D, NT>, session_limit: usize) -> Result<Self> where
+    pub async fn boostrap_client<ROP>(id: NodeId, cfg: ClientConfig<RF, D, NT>, session_limit: usize) -> Result<Self> where
         NT: FullNetworkNode<RF::InformationProvider, RF::Serialization, ClientServiceMsg<D>>,
         ROP: OrderProtocolTolerance + 'static {
         let (tx, rx) = channel::new_bounded_sync(session_limit, None);
 
-        let client = Client::bootstrap::<ROP>(cfg).await?;
+        let client = Client::bootstrap::<ROP>(id, cfg).await?;
 
         let id = client.id();
         let data = client.client_data().clone();
 
+        // Populate the channel with the given session limit
         for _ in 1..session_limit {
             tx.send_return(client.clone())?;
         }
@@ -47,7 +48,7 @@ impl<RF, D, NT> ConcurrentClient<RF, D, NT>
         tx.send_return(client)?;
 
         Ok(Self {
-            id: id,
+            id,
             client_data: data,
             session_return: tx,
             sessions: rx,
@@ -62,6 +63,7 @@ impl<RF, D, NT> ConcurrentClient<RF, D, NT>
         let id = client.id();
         let data = client.client_data().clone();
 
+        // Populate the channel with the given session limit
         for _ in 1..session_limit {
             tx.send_return(client.clone())?;
         }
@@ -69,7 +71,7 @@ impl<RF, D, NT> ConcurrentClient<RF, D, NT>
         tx.send_return(client)?;
 
         Ok(Self {
-            id: id,
+            id,
             client_data: data,
             session_return: tx,
             sessions: rx,

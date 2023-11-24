@@ -235,9 +235,6 @@ pub struct ClientConfig<RF, D, NT> where
     RF: ReconfigurationProtocol + 'static,
     D: ApplicationData + 'static,
     NT: FullNetworkNode<RF::InformationProvider, RF::Serialization, ClientServiceMsg<D>> {
-    pub n: usize,
-    pub f: usize,
-
     pub unordered_rq_mode: UnorderedClientMode,
 
     /// Check out the docs on `NodeConfig`.
@@ -268,18 +265,13 @@ impl<D, RP, NT> Client<RP, D, NT>
         NT: 'static
 {
     /// Bootstrap a client in `febft`.
-    pub async fn bootstrap<ROP>(cfg: ClientConfig<RP, D, NT>) -> Result<Self>
+    pub async fn bootstrap<ROP>(id: NodeId, cfg: ClientConfig<RP, D, NT>) -> Result<Self>
         where NT: FullNetworkNode<RP::InformationProvider, RP::Serialization, ClientServiceMsg<D>>,
               ROP: OrderProtocolTolerance + 'static, {
         let ClientConfig {
-            n, f, node: node_config,
+            node: node_config,
             unordered_rq_mode, reconfiguration,
         } = cfg;
-
-        // system params
-        let params = SystemParams::new(n, f)?;
-
-        // Actually, we have to get the configuration from here
 
         let network_info_provider = RP::init_default_information(reconfiguration)?;
 
@@ -288,7 +280,7 @@ impl<D, RP, NT> Client<RP, D, NT>
         // FIXME: can the client receive rogue reply messages?
         // perhaps when it reconnects to a replica after experiencing
         // network problems? for now ignore rogue messages...
-        let node = Arc::new(NT::bootstrap(network_info_provider.clone(), node_config).await?);
+        let node = Arc::new(NT::bootstrap(id, network_info_provider.clone(), node_config).await?);
 
         let default_timeout = Duration::from_secs(3);
 
@@ -297,7 +289,7 @@ impl<D, RP, NT> Client<RP, D, NT>
         let timeouts = Timeouts::new::<D>(node.id(), Duration::from_millis(1),
                                           default_timeout, exec_tx.clone());
 
-        let (reconf_tx, reconf_rx) = channel::new_bounded_sync(128,Some("Reconfiguration Channel"));
+        let (reconf_tx, reconf_rx) = channel::new_bounded_sync(128, Some("Reconfiguration Channel"));
 
         // TODO: Make timeouts actually work properly with the clients (including making the normal
         //timeouts utilize this same system)
@@ -351,7 +343,7 @@ impl<D, RP, NT> Client<RP, D, NT>
         // spawn receiving task
         std::thread::Builder::new()
             .name(format!("Client {:?} message processing thread", node.id()))
-            .spawn(move || Self::message_recv_task(params, task_data, node, timeouts, exec_rx))
+            .spawn(move || Self::message_recv_task(task_data, node, timeouts, exec_rx))
             .expect("Failed to launch message processing thread");
 
         let session_id = data.session_counter.fetch_add(1, Ordering::Relaxed).into();
@@ -617,7 +609,8 @@ impl<D, RP, NT> Client<RP, D, NT>
     fn create_replica_votes(
         request_info: &Mutex<IntMap<SentRequestInfo>>,
         request_key: u64,
-        params: &SystemParams,
+        n: usize,
+        f: usize,
     ) -> ReplicaVotes {
         let mut request_info_guard = request_info.lock().unwrap();
 
@@ -637,8 +630,8 @@ impl<D, RP, NT> Client<RP, D, NT>
             //If there is no stored information, take the safe road and require f + 1 votes
             ReplicaVotes {
                 sent_time: Instant::now(),
-                contacted_nodes: params.n(),
-                needed_votes_count: params.f() + 1,
+                contacted_nodes: n,
+                needed_votes_count: f + 1,
                 voted: Default::default(),
                 digests: Default::default(),
             }
@@ -785,7 +778,7 @@ impl<D, RP, NT> Client<RP, D, NT>
     ///This task might become a large bottleneck with the scenario of few clients with high concurrent rqs,
     /// As the replicas will make very large batches and respond to all the sent requests in one go.
     /// This leaves this thread with a very large task to do in a very short time and it just can't keep up
-    fn message_recv_task(params: SystemParams, data: Arc<ClientData<RP, D>>,
+    fn message_recv_task(data: Arc<ClientData<RP, D>>,
                          node: Arc<NT>, timeouts: Timeouts, timeout_rx: ChannelSyncRx<Message>) where NT: ProtocolNetworkNode<ClientServiceMsg<D>> {
         // use session id as key
         let mut last_operation_ids: IntMap<SeqNo> = IntMap::new();
@@ -821,7 +814,10 @@ impl<D, RP, NT> Client<RP, D, NT>
                         .or_insert_with(|| {
                             let request_info = get_request_info(session_id, &*data);
 
-                            Self::create_replica_votes(request_info, request_key, &params)
+                            let quorum = data.reconfig_protocol.get_quorum_members();
+                            //TODO: Fix this in order to handle any type of protocol (BFT or CFT or BFT with TPM)
+
+                            Self::create_replica_votes(request_info, request_key, quorum.len(), (quorum.len() - 1) / 3)
                         });
 
                     //Check if replicas try to vote twice on the same consensus instance
@@ -1014,5 +1010,5 @@ pub enum ClientError {
     #[error("Failed connecting to node {0:?}")]
     AlreadyConnectingToNode(NodeId),
     #[error("Failed, already connected to node {0:?}")]
-    AlreadyConnectedToNode(NodeId)
+    AlreadyConnectedToNode(NodeId),
 }
