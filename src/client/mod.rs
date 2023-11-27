@@ -150,7 +150,6 @@ pub struct Client<RF, D, NT> where D: ApplicationData + 'static, NT: 'static {
     session_id: SeqNo,
     operation_counter: SeqNo,
     data: Arc<ClientData<RF, D>>,
-    params: SystemParams,
     node: Arc<NT>,
 }
 
@@ -164,7 +163,6 @@ impl<RF, D: ApplicationData, NT> Clone for Client<RF, D, NT> {
 
         Self {
             session_id,
-            params: self.params,
             node: self.node.clone(),
             data: Arc::clone(&self.data),
             //Start at one, since when receiving we check if received_op_id >= last_op_id, which is by default 0
@@ -352,7 +350,6 @@ impl<D, RP, NT> Client<RP, D, NT>
 
         Ok(Client {
             data,
-            params,
             session_id,
             node: cli_node,
             //Start at one, since when receiving we check if received_op_id >= last_op_id, which is by default 0

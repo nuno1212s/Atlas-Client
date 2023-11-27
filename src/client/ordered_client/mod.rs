@@ -30,6 +30,6 @@ impl<RF, D, NT> ClientType<RF, D, NT> for Ordered
     }
 
     fn needed_responses(client: &Client<RF, D, NT>) -> usize {
-        client.params.f() + 1
+        client.data.reconfig_protocol.get_current_f() + 1
     }
 }

@@ -146,7 +146,7 @@ impl<RF, D, NT> ClientType<RF, D, NT> for Unordered
     }
 
     fn needed_responses(client: &Client<RF, D, NT>) -> usize {
-        let f = client.params.f();
+        let f = client.data.reconfig_protocol.get_current_f();
 
         match client.data.follower_data.unordered_request_mode {
             UnorderedClientMode::BFT => f + 1,
