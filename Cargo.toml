@@ -6,9 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
 
-serialize_serde = ["atlas-core/serialize_serde", "atlas-communication/serialize_serde", "atlas-smr-application/serialize_serde",
-    "atlas-common/serialize_serde"]
-serialize_capnp = ["atlas-core/serialize_capnp", "atlas-smr-application/serialize_capnp", "atlas-communication/serialize_capnp"]
+serialize_serde = ["atlas-core/serialize_serde", "atlas-communication/serialize_serde", "atlas-common/serialize_serde"]
+serialize_capnp = ["atlas-core/serialize_capnp", "atlas-communication/serialize_capnp"]
 
 default = ["serialize_serde"]
 
@@ -23,5 +22,5 @@ atlas-communication = { path = "../Atlas-Communication" }
 atlas-smr-application = { path = "../Atlas-SMR-Application" }
 atlas-common = { path = "../Atlas-Common" }
 atlas-core = { path = "../Atlas-Core" }
-atlas-metrics = {path = "../Atlas-Metrics" }
-atlas-reconfiguration = {path = "../Atlas-Reconfiguration" }
+atlas-metrics = { path = "../Atlas-Metrics" }
+atlas-reconfiguration = { path = "../Atlas-Reconfiguration" }
