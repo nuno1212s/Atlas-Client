@@ -25,14 +25,15 @@ use atlas_common::ordering::{Orderable, SeqNo};
 use atlas_common::system_params::SystemParams;
 use atlas_communication::{FullNetworkNode};
 use atlas_communication::protocol_node::{NodeIncomingRqHandler, ProtocolNetworkNode};
-use atlas_core::messages::{Message, ReplyMessage, SystemMessage};
+use atlas_core::messages::{Message, ReplyMessage, RequestMessage};
 use atlas_core::ordering_protocol::OrderProtocolTolerance;
 use atlas_core::reconfiguration_protocol::{QuorumUpdateMessage, ReconfigurableNodeTypes, ReconfigurationProtocol};
-use atlas_core::serialize::{ClientMessage, ClientServiceMsg};
 use atlas_core::timeouts::Timeouts;
 use atlas_metrics::benchmarks::ClientPerf;
 use atlas_metrics::metrics::{metric_duration, metric_increment};
 use atlas_smr_application::serialize::ApplicationData;
+use atlas_smr_core::message::{SystemMessage};
+use atlas_smr_core::serialize::{ClientMessage, ClientServiceMsg};
 
 use crate::metric::{CLIENT_RQ_DELIVER_RESPONSE_ID, CLIENT_RQ_LATENCY_ID, CLIENT_RQ_PER_SECOND_ID, CLIENT_RQ_RECV_PER_SECOND_ID, CLIENT_RQ_RECV_TIME_ID, CLIENT_RQ_SEND_TIME_ID, CLIENT_RQ_TIMEOUT_ID};
 
@@ -284,7 +285,7 @@ impl<D, RP, NT> Client<RP, D, NT>
 
         let (exec_tx, exec_rx) = channel::new_bounded_sync(128, Some("Executor Channel"));
 
-        let timeouts = Timeouts::new::<D>(node.id(), Duration::from_millis(1),
+        let timeouts = Timeouts::new::<RequestMessage<D::Request>>(node.id(), Duration::from_millis(1),
                                           default_timeout, exec_tx.clone());
 
         let (reconf_tx, reconf_rx) = channel::new_bounded_sync(128, Some("Reconfiguration Channel"));

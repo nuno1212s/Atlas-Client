@@ -12,14 +12,15 @@ serialize_capnp = ["atlas-core/serialize_capnp", "atlas-communication/serialize_
 default = ["serialize_serde"]
 
 [dependencies]
-anyhow = "1.0.75"
-thiserror = "1.0.50"
+anyhow = "1.0"
+thiserror = "1.0"
 log = "*"
 intmap = "*"
 futures-timer = "*"
 num_cpus = "*"
 atlas-communication = { path = "../Atlas-Communication" }
 atlas-smr-application = { path = "../Atlas-SMR-Application" }
+atlas-smr-core = { path = "../Atlas-SMR-Core" }
 atlas-common = { path = "../Atlas-Common" }
 atlas-core = { path = "../Atlas-Core" }
 atlas-metrics = { path = "../Atlas-Metrics" }

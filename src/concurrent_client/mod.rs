@@ -7,10 +7,10 @@ use atlas_common::node_id::NodeId;
 use atlas_communication::FullNetworkNode;
 use atlas_core::ordering_protocol::OrderProtocolTolerance;
 use atlas_core::reconfiguration_protocol::ReconfigurationProtocol;
-use atlas_core::serialize::ClientServiceMsg;
 use atlas_reconfiguration::message::ReconfData;
 use atlas_reconfiguration::network_reconfig::NetworkInfo;
 use atlas_smr_application::serialize::ApplicationData;
+use atlas_smr_core::serialize::ClientServiceMsg;
 
 use crate::client::{Client, ClientConfig, ClientType, register_callback, RequestCallback};
 use crate::client::ClientData;
