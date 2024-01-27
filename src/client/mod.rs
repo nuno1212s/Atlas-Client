@@ -9,8 +9,8 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 use std::time::Instant;
-use anyhow::Error;
 
+use anyhow::Error;
 use futures_timer::Delay;
 use intmap::IntMap;
 use log::{debug, error, info};
@@ -22,9 +22,7 @@ use atlas_common::crypto::hash::Digest;
 use atlas_common::error::*;
 use atlas_common::node_id::NodeId;
 use atlas_common::ordering::{Orderable, SeqNo};
-use atlas_common::system_params::SystemParams;
-use atlas_communication::{FullNetworkNode};
-use atlas_communication::protocol_node::{NodeIncomingRqHandler, ProtocolNetworkNode};
+use atlas_communication::stub::{ModuleIncomingStub, ModuleOutgoingStub, NetworkStub, RegularNetworkStub};
 use atlas_core::messages::{Message, ReplyMessage, RequestMessage};
 use atlas_core::ordering_protocol::OrderProtocolTolerance;
 use atlas_core::reconfiguration_protocol::{QuorumUpdateMessage, ReconfigurableNodeTypes, ReconfigurationProtocol};
@@ -32,8 +30,9 @@ use atlas_core::timeouts::Timeouts;
 use atlas_metrics::benchmarks::ClientPerf;
 use atlas_metrics::metrics::{metric_duration, metric_increment};
 use atlas_smr_application::serialize::ApplicationData;
-use atlas_smr_core::message::{SystemMessage};
-use atlas_smr_core::serialize::{ClientMessage, ClientServiceMsg};
+use atlas_smr_core::message::OrderableMessage;
+use atlas_smr_core::networking::client::SMRClientNetworkNode;
+use atlas_smr_core::serialize::{SMRSysMessage, SMRSysMsg};
 
 use crate::metric::{CLIENT_RQ_DELIVER_RESPONSE_ID, CLIENT_RQ_LATENCY_ID, CLIENT_RQ_PER_SECOND_ID, CLIENT_RQ_RECV_PER_SECOND_ID, CLIENT_RQ_RECV_TIME_ID, CLIENT_RQ_SEND_TIME_ID, CLIENT_RQ_TIMEOUT_ID};
 
@@ -131,12 +130,12 @@ pub trait ClientType<RF, D, NT> where D: ApplicationData + 'static {
         session_id: SeqNo,
         operation_id: SeqNo,
         operation: D::Request,
-    ) -> ClientMessage<D>;
+    ) -> SMRSysMessage<D>;
 
     ///The return types for the iterator
     type Iter: Iterator<Item=NodeId>;
 
-    ///Initialize the targets for the requests according with the type of request made
+    ///Initialize the targets for the requests according to the type of request made
     ///
     /// Returns the iterator along with the amount of items contained within it
     fn init_targets(client: &Client<RF, D, NT>) -> (Self::Iter, usize);
@@ -233,7 +232,7 @@ impl<'a, P> Future for ClientRequestFut<'a, P> {
 pub struct ClientConfig<RF, D, NT> where
     RF: ReconfigurationProtocol + 'static,
     D: ApplicationData + 'static,
-    NT: FullNetworkNode<RF::InformationProvider, RF::Serialization, ClientServiceMsg<D>> {
+    NT: SMRClientNetworkNode<RF::InformationProvider, RF::Serialization, D> {
     pub unordered_rq_mode: UnorderedClientMode,
 
     /// Check out the docs on `NodeConfig`.
@@ -264,8 +263,8 @@ impl<D, RP, NT> Client<RP, D, NT>
         NT: 'static
 {
     /// Bootstrap a client in `febft`.
-    pub async fn bootstrap<ROP>(id: NodeId, cfg: ClientConfig<RP, D, NT>) -> Result<Self>
-        where NT: FullNetworkNode<RP::InformationProvider, RP::Serialization, ClientServiceMsg<D>>,
+    pub async fn bootstrap<ROP, NNT>(id: NodeId, cfg: ClientConfig<RP, D, NNT>) -> Result<Self>
+        where NNT: SMRClientNetworkNode<RP::InformationProvider, RP::Serialization, D>,
               ROP: OrderProtocolTolerance + 'static, {
         let ClientConfig {
             node: node_config,
@@ -279,14 +278,14 @@ impl<D, RP, NT> Client<RP, D, NT>
         // FIXME: can the client receive rogue reply messages?
         // perhaps when it reconnects to a replica after experiencing
         // network problems? for now ignore rogue messages...
-        let node = Arc::new(NT::bootstrap(id, network_info_provider.clone(), node_config).await?);
+        let node = Arc::new(NNT::bootstrap(id, network_info_provider.clone(), node_config).await?);
 
         let default_timeout = Duration::from_secs(3);
 
         let (exec_tx, exec_rx) = channel::new_bounded_sync(128, Some("Executor Channel"));
 
         let timeouts = Timeouts::new::<RequestMessage<D::Request>>(node.id(), Duration::from_millis(1),
-                                          default_timeout, exec_tx.clone());
+                                                                   default_timeout, exec_tx.clone());
 
         let (reconf_tx, reconf_rx) = channel::new_bounded_sync(128, Some("Reconfiguration Channel"));
 
@@ -294,7 +293,7 @@ impl<D, RP, NT> Client<RP, D, NT>
         //timeouts utilize this same system)
 
         let reconfig_protocol = RP::initialize_protocol(network_info_provider,
-                                                        node.clone(),
+                                                        node.reconfiguration_node().clone(),
                                                         timeouts.clone(),
                                                         ReconfigurableNodeTypes::ClientNode(reconf_tx),
                                                         ROP::get_n_for_f(1)).await?;
@@ -337,7 +336,7 @@ impl<D, RP, NT> Client<RP, D, NT>
 
         let task_data = Arc::clone(&data);
 
-        let cli_node = node.clone();
+        let cli_node = node.app_node().clone();
 
         // spawn receiving task
         std::thread::Builder::new()
@@ -377,7 +376,7 @@ impl<D, RP, NT> Client<RP, D, NT>
         &self.data.observer
     }*/
     #[inline]
-    pub fn id(&self) -> NodeId where NT: ProtocolNetworkNode<ClientServiceMsg<D>> {
+    pub fn id(&self) -> NodeId where NT: RegularNetworkStub<SMRSysMsg<D>> {
         self.node.id()
     }
 
@@ -397,7 +396,7 @@ impl<D, RP, NT> Client<RP, D, NT>
     pub(super) fn update_inner<T>(&mut self, operation: D::Request) -> Result<ClientRequestFut<D::Reply>>
         where
             T: ClientType<RP, D, NT>,
-            NT: ProtocolNetworkNode<ClientServiceMsg<D>>,
+            NT: RegularNetworkStub<SMRSysMsg<D>>,
             RP: ReconfigurationProtocol + 'static {
         let start = Instant::now();
 
@@ -426,7 +425,7 @@ impl<D, RP, NT> Client<RP, D, NT>
         }
 
         // broadcast our request to the node group
-        self.node.broadcast(message, targets);
+        self.node.outgoing_stub().broadcast(message, targets);
 
         // await response
         let ready = get_ready::<RP, D>(session_id, &*self.data);
@@ -455,7 +454,7 @@ impl<D, RP, NT> Client<RP, D, NT>
     pub async fn update<T>(&mut self, operation: D::Request) -> Result<D::Reply>
         where
             T: ClientType<RP, D, NT>,
-            NT: ProtocolNetworkNode<ClientServiceMsg<D>>,
+            NT: RegularNetworkStub<SMRSysMsg<D>>,
             RP: ReconfigurationProtocol + 'static
     {
         self.update_inner::<T>(operation)?.await
@@ -463,7 +462,7 @@ impl<D, RP, NT> Client<RP, D, NT>
 
     pub(super) fn update_callback_inner<T>(&mut self, operation: D::Request) -> u64 where
         T: ClientType<RP, D, NT>,
-        NT: ProtocolNetworkNode<ClientServiceMsg<D>>,
+        NT: RegularNetworkStub<SMRSysMsg<D>>,
         RP: ReconfigurationProtocol + 'static {
         let start = Instant::now();
 
@@ -494,7 +493,7 @@ impl<D, RP, NT> Client<RP, D, NT>
             request_info_guard.insert(request_key, sent_info);
         }
 
-        self.node.broadcast(message, targets);
+        self.node.outgoing_stub().broadcast(message, targets);
 
         Self::start_timeout(
             self.node.clone(),
@@ -523,7 +522,7 @@ impl<D, RP, NT> Client<RP, D, NT>
         callback: RequestCallback<D>,
     ) where
         T: ClientType<RP, D, NT>,
-        NT: ProtocolNetworkNode<ClientServiceMsg<D>>,
+        NT: RegularNetworkStub<SMRSysMsg<D>>,
         RP: ReconfigurationProtocol + 'static
     {
         let rq_key = self.update_callback_inner::<T>(operation);
@@ -546,7 +545,7 @@ impl<D, RP, NT> Client<RP, D, NT>
         session_id: SeqNo,
         rq_id: SeqNo,
         client_data: Arc<ClientData<RP, D>>,
-    ) where NT: ProtocolNetworkNode<ClientServiceMsg<D>> {
+    ) where NT: RegularNetworkStub<SMRSysMsg<D>> {
         let node = node.clone();
 
         async_runtime::spawn(async move {
@@ -777,20 +776,21 @@ impl<D, RP, NT> Client<RP, D, NT>
     /// As the replicas will make very large batches and respond to all the sent requests in one go.
     /// This leaves this thread with a very large task to do in a very short time and it just can't keep up
     fn message_recv_task(data: Arc<ClientData<RP, D>>,
-                         node: Arc<NT>, timeouts: Timeouts, timeout_rx: ChannelSyncRx<Message>) where NT: ProtocolNetworkNode<ClientServiceMsg<D>> {
+                         node: Arc<NT>, timeouts: Timeouts, timeout_rx: ChannelSyncRx<Message>)
+        where NT: RegularNetworkStub<SMRSysMsg<D>> {
         // use session id as key
         let mut last_operation_ids: IntMap<SeqNo> = IntMap::new();
         let mut replica_votes: IntMap<ReplicaVotes> = IntMap::new();
 
         //TODO: Maybe change this to make clients use the same timeouts service?
-        while let Ok(message) = node.node_incoming_rq_handling().receive_from_replicas(None) {
+        while let Ok(message) = node.incoming_stub().receive_messages() {
             let start = Instant::now();
 
-            let (header, sys_msg) = message.unwrap().into_inner();
+            let (header, sys_msg) = message.into_inner();
 
             match &sys_msg {
-                SystemMessage::OrderedReply(msg_info)
-                | SystemMessage::UnorderedReply(msg_info) => {
+                OrderableMessage::OrderedReply(msg_info)
+                | OrderableMessage::UnorderedReply(msg_info) => {
                     let session_id = msg_info.session_id();
                     let operation_id = msg_info.sequence_number();
 
@@ -858,8 +858,8 @@ impl<D, RP, NT> Client<RP, D, NT>
                             votes,
                             ready,
                             match sys_msg {
-                                SystemMessage::OrderedReply(message)
-                                | SystemMessage::UnorderedReply(message) => message,
+                                OrderableMessage::OrderedReply(message)
+                                | OrderableMessage::UnorderedReply(message) => message,
                                 _ => unreachable!(),
                             },
                         );
