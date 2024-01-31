@@ -256,107 +256,112 @@ pub struct ReplicaVotes {
 
 pub type RequestCallback<D: ApplicationData> = Box<dyn FnOnce(Result<D::Reply>) + Send>;
 
+pub async fn bootstrap_client<RP, D, NT, ROP>(id: NodeId, cfg: ClientConfig<RP, D, NT>) -> Result<Client<RP, D, NT::AppNode>>
+    where
+        RP: ReconfigurationProtocol + 'static,
+        D: ApplicationData + 'static,
+        NT: SMRClientNetworkNode<RP::InformationProvider, RP::Serialization, D>,
+        ROP: OrderProtocolTolerance {
+    let ClientConfig {
+        node: node_config,
+        unordered_rq_mode, reconfiguration,
+    } = cfg;
+
+    let network_info_provider = RP::init_default_information(reconfiguration)?;
+
+    // connect to peer nodes
+    //
+    // FIXME: can the client receive rogue reply messages?
+    // perhaps when it reconnects to a replica after experiencing
+    // network problems? for now ignore rogue messages...
+    let (node, reconf) = NT::bootstrap(id, network_info_provider.clone(), node_config).await?;
+
+    let node = Arc::new(node);
+
+    let default_timeout = Duration::from_secs(3);
+
+    let (exec_tx, exec_rx) = channel::new_bounded_sync(128, Some("Executor Channel"));
+
+    let timeouts = Timeouts::new::<RequestMessage<D::Request>>(node.app_node().id(), Duration::from_millis(1),
+                                                               default_timeout, exec_tx.clone());
+
+    let (reconf_tx, reconf_rx) = channel::new_bounded_sync(128, Some("Reconfiguration Channel"));
+
+    // TODO: Make timeouts actually work properly with the clients (including making the normal
+    //timeouts utilize this same system)
+
+    let reconfig_protocol = RP::initialize_protocol(network_info_provider,
+                                                    node.reconfiguration_node().clone(),
+                                                    timeouts.clone(),
+                                                    ReconfigurableNodeTypes::ClientNode(reconf_tx),
+                                                    reconf,
+                                                    ROP::get_n_for_f(1)).await?;
+
+    info!("{:?} // Waiting for reconfiguration to stabilize...", node.app_node().id());
+
+    match reconf_rx.recv() {
+        Ok(message) => {
+            match message {
+                QuorumUpdateMessage::UpdatedQuorumView(quorum_view) => {
+                    info!("{:?} // Reconfiguration stabilized, quorum view: {:?}", node.app_node().id(), quorum_view);
+                }
+            }
+        }
+        Err(err) => {
+            return Err!(ClientError::from(err));
+        }
+    }
+
+    let stats = {
+        None
+    };
+
+    // create shared data
+    let data = Arc::new(ClientData {
+        session_counter: AtomicU32::new(0),
+        follower_data: FollowerData::empty(unordered_rq_mode),
+
+        request_info: std::iter::repeat_with(|| Mutex::new(IntMap::new()))
+            .take(num_cpus::get())
+            .collect(),
+
+        ready: std::iter::repeat_with(|| Mutex::new(IntMap::new()))
+            .take(num_cpus::get())
+            .collect(),
+        reconfig_protocol,
+        reconfig_protocol_rx: reconf_rx,
+        stats,
+    });
+
+    let task_data = Arc::clone(&data);
+
+    let cli_node = node.app_node().clone();
+
+    // spawn receiving task
+    std::thread::Builder::new()
+        .name(format!("Client {:?} message processing thread", node.app_node().id()))
+        .spawn(move || Client::message_recv_task(task_data, cli_node, timeouts, exec_rx))
+        .expect("Failed to launch message processing thread");
+
+    let session_id = data.session_counter.fetch_add(1, Ordering::Relaxed).into();
+
+    info!("{:?} // Client has connected to all nodes and is ready to start", node.app_node().id());
+
+    Ok(Client {
+        data,
+        session_id,
+        node: node.app_node().clone(),
+        //Start at one, since when receiving we check if received_op_id >= last_op_id, which is by default 0
+        operation_counter: SeqNo::ZERO.next(),
+    })
+}
+
 impl<D, RP, NT> Client<RP, D, NT>
     where
         RP: ReconfigurationProtocol + 'static,
         D: ApplicationData + 'static,
         NT: 'static
 {
-    /// Bootstrap a client in `febft`.
-    pub async fn bootstrap<ROP, NNT>(id: NodeId, cfg: ClientConfig<RP, D, NNT>) -> Result<Self>
-        where NNT: SMRClientNetworkNode<RP::InformationProvider, RP::Serialization, D>,
-              ROP: OrderProtocolTolerance + 'static, {
-        let ClientConfig {
-            node: node_config,
-            unordered_rq_mode, reconfiguration,
-        } = cfg;
-
-        let network_info_provider = RP::init_default_information(reconfiguration)?;
-
-        // connect to peer nodes
-        //
-        // FIXME: can the client receive rogue reply messages?
-        // perhaps when it reconnects to a replica after experiencing
-        // network problems? for now ignore rogue messages...
-        let node = Arc::new(NNT::bootstrap(id, network_info_provider.clone(), node_config).await?);
-
-        let default_timeout = Duration::from_secs(3);
-
-        let (exec_tx, exec_rx) = channel::new_bounded_sync(128, Some("Executor Channel"));
-
-        let timeouts = Timeouts::new::<RequestMessage<D::Request>>(node.id(), Duration::from_millis(1),
-                                                                   default_timeout, exec_tx.clone());
-
-        let (reconf_tx, reconf_rx) = channel::new_bounded_sync(128, Some("Reconfiguration Channel"));
-
-        // TODO: Make timeouts actually work properly with the clients (including making the normal
-        //timeouts utilize this same system)
-
-        let reconfig_protocol = RP::initialize_protocol(network_info_provider,
-                                                        node.reconfiguration_node().clone(),
-                                                        timeouts.clone(),
-                                                        ReconfigurableNodeTypes::ClientNode(reconf_tx),
-                                                        ROP::get_n_for_f(1)).await?;
-
-        info!("{:?} // Waiting for reconfiguration to stabilize...", node.id());
-
-        match reconf_rx.recv() {
-            Ok(message) => {
-                match message {
-                    QuorumUpdateMessage::UpdatedQuorumView(quorum_view) => {
-                        info!("{:?} // Reconfiguration stabilized, quorum view: {:?}", node.id(), quorum_view);
-                    }
-                }
-            }
-            Err(err) => {
-                return Err!(ClientError::from(err));
-            }
-        }
-
-        let stats = {
-            None
-        };
-
-        // create shared data
-        let data = Arc::new(ClientData {
-            session_counter: AtomicU32::new(0),
-            follower_data: FollowerData::empty(unordered_rq_mode),
-
-            request_info: std::iter::repeat_with(|| Mutex::new(IntMap::new()))
-                .take(num_cpus::get())
-                .collect(),
-
-            ready: std::iter::repeat_with(|| Mutex::new(IntMap::new()))
-                .take(num_cpus::get())
-                .collect(),
-            reconfig_protocol,
-            reconfig_protocol_rx: reconf_rx,
-            stats,
-        });
-
-        let task_data = Arc::clone(&data);
-
-        let cli_node = node.app_node().clone();
-
-        // spawn receiving task
-        std::thread::Builder::new()
-            .name(format!("Client {:?} message processing thread", node.id()))
-            .spawn(move || Self::message_recv_task(task_data, node, timeouts, exec_rx))
-            .expect("Failed to launch message processing thread");
-
-        let session_id = data.session_counter.fetch_add(1, Ordering::Relaxed).into();
-
-        info!("{:?} // Client has connected to all nodes and is ready to start", cli_node.id());
-
-        Ok(Client {
-            data,
-            session_id,
-            node: cli_node,
-            //Start at one, since when receiving we check if received_op_id >= last_op_id, which is by default 0
-            operation_counter: SeqNo::ZERO.next(),
-        })
-    }
-
     ///Bootstrap an observer client and get a reference to the observer client
     /*pub async fn bootstrap_observer(&mut self) -> &Arc<Mutex<Option<ObserverClient>>> {
         {

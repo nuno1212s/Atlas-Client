@@ -3,8 +3,8 @@ use atlas_common::ordering::SeqNo;
 use atlas_core::messages::RequestMessage;
 use atlas_smr_application::serialize::ApplicationData;
 use atlas_core::reconfiguration_protocol::ReconfigurationProtocol;
-use atlas_smr_core::message::{SystemMessage};
-use atlas_smr_core::serialize::ClientMessage;
+use atlas_smr_core::message::{OrderableMessage, SystemMessage};
+use atlas_smr_core::serialize::{ SMRSysMessage};
 use super::{ClientType, Client};
 
 pub struct Ordered;
@@ -16,8 +16,8 @@ impl<RF, D, NT> ClientType<RF, D, NT> for Ordered
         session_id: SeqNo,
         operation_id: SeqNo,
         operation: D::Request,
-    ) -> ClientMessage<D> {
-        SystemMessage::OrderedRequest(RequestMessage::new(session_id, operation_id, operation))
+    ) -> SMRSysMessage<D> {
+        OrderableMessage::OrderedRequest(RequestMessage::new(session_id, operation_id, operation))
     }
 
     type Iter = impl Iterator<Item=NodeId>;

@@ -6,13 +6,14 @@ use atlas_common::Err;
 use atlas_common::error::*;
 use atlas_common::node_id::NodeId;
 use atlas_common::ordering::SeqNo;
-use atlas_communication::{ NodeConnections};
-use atlas_communication::protocol_node::ProtocolNetworkNode;
+use atlas_communication::byte_stub::connections::NetworkConnectionController;
+use atlas_communication::stub::NetworkStub;
 use atlas_core::messages::RequestMessage;
 use atlas_smr_application::serialize::ApplicationData;
 use atlas_core::reconfiguration_protocol::ReconfigurationProtocol;
-use atlas_smr_core::message::{ SystemMessage};
-use atlas_smr_core::serialize::{ClientMessage, ClientServiceMsg};
+use atlas_smr_core::message::{OrderableMessage, SystemMessage};
+use atlas_smr_core::networking::client::SMRClientNetworkNode;
+use atlas_smr_core::serialize::{ SMRSysMessage};
 
 use super::{Client, ClientError, ClientType};
 
@@ -58,7 +59,8 @@ impl<RF, D, NT> Client<RF, D, NT>
     ///
     /// Returns Err if we are already connecting to or connected to
     /// the given follower.
-    fn connect_to_follower(&self, node_id: NodeId) -> Result<()> where NT: ProtocolNetworkNode<ClientServiceMsg<D>> {
+    fn connect_to_follower(&self, node_id: NodeId) -> Result<()> where
+        NT: SMRClientNetworkNode<RF::InformationProvider, RF::Serialization, D>, {
         {
             let connecting = self.data.follower_data.connecting_followers.lock().unwrap();
 
@@ -91,7 +93,7 @@ impl<RF, D, NT> Client<RF, D, NT>
             }
         });
 
-        self.node.node_connections().connect_to_node(node_id);
+        self.node.app_node().connections().connect_to_node(node_id);
 
         Ok(())
     }
@@ -108,9 +110,9 @@ impl<RF, D, NT> ClientType<RF, D, NT> for Unordered
         session_id: SeqNo,
         operation_id: SeqNo,
         operation: D::Request,
-    ) -> ClientMessage<D>
+    ) -> SMRSysMessage<D>
     {
-        SystemMessage::UnorderedRequest(RequestMessage::new(session_id, operation_id, operation))
+        OrderableMessage::UnorderedRequest(RequestMessage::new(session_id, operation_id, operation))
     }
 
     type Iter = impl Iterator<Item=NodeId>;
