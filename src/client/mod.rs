@@ -274,7 +274,7 @@ pub async fn bootstrap_client<RP, D, NT, ROP>(id: NodeId, cfg: ClientConfig<RP, 
     // FIXME: can the client receive rogue reply messages?
     // perhaps when it reconnects to a replica after experiencing
     // network problems? for now ignore rogue messages...
-    let (node, reconf) = NT::bootstrap(id, network_info_provider.clone(), node_config).await?;
+    let (node, reconf) = NT::bootstrap(network_info_provider.clone(), node_config).await?;
 
     let node = Arc::new(node);
 
