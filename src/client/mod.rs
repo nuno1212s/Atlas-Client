@@ -22,6 +22,7 @@ use atlas_common::crypto::hash::Digest;
 use atlas_common::error::*;
 use atlas_common::node_id::NodeId;
 use atlas_common::ordering::{Orderable, SeqNo};
+use atlas_communication::reconfiguration::ReconfigurationMessageHandler;
 use atlas_communication::stub::{ModuleIncomingStub, ModuleOutgoingStub, NetworkStub, RegularNetworkStub};
 use atlas_core::messages::{Message, ReplyMessage, RequestMessage};
 use atlas_core::ordering_protocol::OrderProtocolTolerance;
@@ -269,12 +270,14 @@ pub async fn bootstrap_client<RP, D, NT, ROP>(id: NodeId, cfg: ClientConfig<RP, 
 
     let network_info_provider = RP::init_default_information(reconfiguration)?;
 
+    let reconfiguration_network_updater = ReconfigurationMessageHandler::initialize();
+    
     // connect to peer nodes
     //
     // FIXME: can the client receive rogue reply messages?
     // perhaps when it reconnects to a replica after experiencing
     // network problems? for now ignore rogue messages...
-    let (node, reconf) = NT::bootstrap(network_info_provider.clone(), node_config).await?;
+    let node = NT::bootstrap(network_info_provider.clone(), node_config, reconfiguration_network_updater.clone()).await?;
 
     let node = Arc::new(node);
 
@@ -294,7 +297,7 @@ pub async fn bootstrap_client<RP, D, NT, ROP>(id: NodeId, cfg: ClientConfig<RP, 
                                                     node.reconfiguration_node().clone(),
                                                     timeouts.clone(),
                                                     ReconfigurableNodeTypes::ClientNode(reconf_tx),
-                                                    reconf,
+                                                    reconfiguration_network_updater,
                                                     ROP::get_n_for_f(1)).await?;
 
     info!("{:?} // Waiting for reconfiguration to stabilize...", node.app_node().id());
@@ -430,7 +433,7 @@ impl<D, RP, NT> Client<RP, D, NT>
         }
 
         // broadcast our request to the node group
-        self.node.outgoing_stub().broadcast(message, targets);
+        self.node.outgoing_stub().broadcast_signed(message, targets);
 
         // await response
         let ready = get_ready::<RP, D>(session_id, &*self.data);
@@ -498,7 +501,7 @@ impl<D, RP, NT> Client<RP, D, NT>
             request_info_guard.insert(request_key, sent_info);
         }
 
-        self.node.outgoing_stub().broadcast(message, targets);
+        self.node.outgoing_stub().broadcast_signed(message, targets);
 
         Self::start_timeout(
             self.node.clone(),
