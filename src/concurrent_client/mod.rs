@@ -35,7 +35,7 @@ pub async fn bootstrap_client<RP, D, NT, ROP>(id: NodeId, cfg: ClientConfig<RP, 
         NT: SMRClientNetworkNode<RP::InformationProvider, RP::Serialization, D>,
         ROP: OrderProtocolTolerance {
     /// Creates a new concurrent client, with the given configuration
-    let (tx, rx) = channel::new_bounded_sync(session_limit, None);
+    let (tx, rx) = channel::new_bounded_sync(session_limit, None::<String>);
 
     let client = client::bootstrap_client::<RP, D, NT, ROP>(id, cfg).await?;
 
@@ -63,7 +63,7 @@ impl<RF, D, NT> ConcurrentClient<RF, D, NT>
     /// Creates a new concurrent client, from an already existing client
     pub fn from_client(client: Client<RF, D, NT>, session_limit: usize) -> Result<Self>
         where NT: RegularNetworkStub<SMRSysMsg<D>>, {
-        let (tx, rx) = channel::new_bounded_sync(session_limit, None);
+        let (tx, rx) = channel::new_bounded_sync(session_limit, None::<String>);
 
         let id = client.id();
         let data = client.client_data().clone();
