@@ -271,7 +271,7 @@ pub async fn bootstrap_client<RP, D, NT, ROP>(id: NodeId, cfg: ClientConfig<RP, 
     let network_info_provider = RP::init_default_information(reconfiguration)?;
 
     let reconfiguration_network_updater = ReconfigurationMessageHandler::initialize();
-    
+
     // connect to peer nodes
     //
     // FIXME: can the client receive rogue reply messages?
@@ -870,7 +870,7 @@ impl<D, RP, NT> Client<RP, D, NT>
                                 | OrderableMessage::UnorderedReply(message) => message,
                                 _ => unreachable!(),
                             },
-                        );
+                        ); 
                     } else {
                         //If we do not have f+1 replies yet, check if it's still possible to get those
                         //Replies by taking a look at the target count and currently received replies count
