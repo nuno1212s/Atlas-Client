@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
 
-serialize_serde = ["atlas-core/serialize_serde", "atlas-communication/serialize_serde", "atlas-common/serialize_serde"]
+serialize_serde = ["atlas-core/serialize_serde", "atlas-communication/serialize_serde", "atlas-common/serialize_serde", "atlas-smr-core/serialize_serde"]
 serialize_capnp = ["atlas-core/serialize_capnp", "atlas-communication/serialize_capnp"]
 
 default = ["serialize_serde"]
