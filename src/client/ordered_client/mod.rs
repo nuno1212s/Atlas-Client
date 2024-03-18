@@ -1,17 +1,19 @@
+use super::{Client, ClientType};
 use atlas_common::node_id::NodeId;
 use atlas_common::ordering::SeqNo;
 use atlas_core::messages::RequestMessage;
-use atlas_smr_application::serialize::ApplicationData;
 use atlas_core::reconfiguration_protocol::ReconfigurationProtocol;
+use atlas_smr_application::serialize::ApplicationData;
 use atlas_smr_core::message::{OrderableMessage, SystemMessage};
-use atlas_smr_core::serialize::{ SMRSysMessage};
-use super::{ClientType, Client};
+use atlas_smr_core::serialize::SMRSysMessage;
 
 pub struct Ordered;
 
 impl<RF, D, NT> ClientType<RF, D, NT> for Ordered
-    where D: ApplicationData + 'static,
-          RF: ReconfigurationProtocol + 'static, {
+where
+    D: ApplicationData + 'static,
+    RF: ReconfigurationProtocol + 'static,
+{
     fn init_request(
         session_id: SeqNo,
         operation_id: SeqNo,
@@ -20,7 +22,7 @@ impl<RF, D, NT> ClientType<RF, D, NT> for Ordered
         OrderableMessage::OrderedRequest(RequestMessage::new(session_id, operation_id, operation))
     }
 
-    type Iter = impl Iterator<Item=NodeId>;
+    type Iter = impl Iterator<Item = NodeId>;
 
     fn init_targets(client: &Client<RF, D, NT>) -> (Self::Iter, usize) {
         let quorum = client.get_quorum_view();

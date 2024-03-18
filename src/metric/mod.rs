@@ -1,5 +1,5 @@
-use atlas_metrics::{MetricLevel, MetricRegistry};
 use atlas_metrics::metrics::MetricKind;
+use atlas_metrics::{MetricLevel, MetricRegistry};
 
 /// Client Metrics module
 /// We will take the 3XX range of metric IDs
@@ -27,12 +27,51 @@ pub const CLIENT_RQ_TIMEOUT_ID: usize = 306;
 
 pub fn metrics() -> Vec<MetricRegistry> {
     vec![
-        (CLIENT_RQ_PER_SECOND_ID, CLIENT_RQ_PER_SECOND.to_string(), MetricKind::Counter, MetricLevel::Trace, 8).into(),
-        (CLIENT_RQ_LATENCY_ID, CLIENT_RQ_LATENCY.to_string(), MetricKind::Duration).into(),
-        (CLIENT_RQ_SEND_TIME_ID, CLIENT_RQ_SEND_TIME.to_string(), MetricKind::Duration, MetricLevel::Trace, 8).into(),
-        (CLIENT_RQ_RECV_TIME_ID, CLIENT_RQ_RECV_TIME.to_string(), MetricKind::Duration).into(),
-        (CLIENT_RQ_RECV_PER_SECOND_ID, CLIENT_RQ_RECV_PER_SECOND.to_string(), MetricKind::Counter).into(),
-        (CLIENT_RQ_DELIVER_RESPONSE_ID, CLIENT_RQ_DELIVER_RESPONSE.to_string(), MetricKind::Duration).into(),
-        (CLIENT_RQ_TIMEOUT_ID, CLIENT_RQ_TIMEOUT.to_string(), MetricKind::Counter).into(),
+        (
+            CLIENT_RQ_PER_SECOND_ID,
+            CLIENT_RQ_PER_SECOND.to_string(),
+            MetricKind::Counter,
+            MetricLevel::Trace,
+            8,
+        )
+            .into(),
+        (
+            CLIENT_RQ_LATENCY_ID,
+            CLIENT_RQ_LATENCY.to_string(),
+            MetricKind::Duration,
+        )
+            .into(),
+        (
+            CLIENT_RQ_SEND_TIME_ID,
+            CLIENT_RQ_SEND_TIME.to_string(),
+            MetricKind::Duration,
+            MetricLevel::Trace,
+            8,
+        )
+            .into(),
+        (
+            CLIENT_RQ_RECV_TIME_ID,
+            CLIENT_RQ_RECV_TIME.to_string(),
+            MetricKind::Duration,
+        )
+            .into(),
+        (
+            CLIENT_RQ_RECV_PER_SECOND_ID,
+            CLIENT_RQ_RECV_PER_SECOND.to_string(),
+            MetricKind::Counter,
+        )
+            .into(),
+        (
+            CLIENT_RQ_DELIVER_RESPONSE_ID,
+            CLIENT_RQ_DELIVER_RESPONSE.to_string(),
+            MetricKind::Duration,
+        )
+            .into(),
+        (
+            CLIENT_RQ_TIMEOUT_ID,
+            CLIENT_RQ_TIMEOUT.to_string(),
+            MetricKind::Counter,
+        )
+            .into(),
     ]
 }

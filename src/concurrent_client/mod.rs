@@ -1,9 +1,8 @@
-use std::sync::Arc;
-use log::error;
-use atlas_common::{channel, quiet_unwrap};
+use crate::client;
 use atlas_common::channel::{ChannelSyncRx, ChannelSyncTx};
 use atlas_common::error::*;
 use atlas_common::node_id::NodeId;
+use atlas_common::{channel, quiet_unwrap};
 use atlas_communication::stub::RegularNetworkStub;
 use atlas_core::ordering_protocol::OrderProtocolTolerance;
 use atlas_core::reconfiguration_protocol::ReconfigurationProtocol;
@@ -12,10 +11,11 @@ use atlas_reconfiguration::network_reconfig::NetworkInfo;
 use atlas_smr_application::serialize::ApplicationData;
 use atlas_smr_core::networking::client::SMRClientNetworkNode;
 use atlas_smr_core::serialize::SMRSysMsg;
-use crate::client;
+use log::error;
+use std::sync::Arc;
 
-use crate::client::{Client, ClientConfig, ClientType, register_callback, RequestCallback};
 use crate::client::ClientData;
+use crate::client::{register_callback, Client, ClientConfig, ClientType, RequestCallback};
 
 /// A client implementation that will automagically manage all of the sessions required, reutilizing them
 /// as much as possible
@@ -28,12 +28,17 @@ pub struct ConcurrentClient<RF, D: ApplicationData + 'static, NT: 'static> {
     sessions: ChannelSyncRx<Client<RF, D, NT>>,
 }
 
-pub async fn bootstrap_client<RP, D, NT, ROP>(id: NodeId, cfg: ClientConfig<RP, D, NT>, session_limit: usize) -> Result<ConcurrentClient<RP, D, NT::AppNode>>
-    where
-        RP: ReconfigurationProtocol + 'static,
-        D: ApplicationData + 'static,
-        NT: SMRClientNetworkNode<RP::InformationProvider, RP::Serialization, D>,
-        ROP: OrderProtocolTolerance {
+pub async fn bootstrap_client<RP, D, NT, ROP>(
+    id: NodeId,
+    cfg: ClientConfig<RP, D, NT>,
+    session_limit: usize,
+) -> Result<ConcurrentClient<RP, D, NT::AppNode>>
+where
+    RP: ReconfigurationProtocol + 'static,
+    D: ApplicationData + 'static,
+    NT: SMRClientNetworkNode<RP::InformationProvider, RP::Serialization, D> + 'static,
+    ROP: OrderProtocolTolerance,
+{
     /// Creates a new concurrent client, with the given configuration
     let (tx, rx) = channel::new_bounded_sync(session_limit, None::<String>);
 
@@ -58,11 +63,16 @@ pub async fn bootstrap_client<RP, D, NT, ROP>(id: NodeId, cfg: ClientConfig<RP, 
 }
 
 impl<RF, D, NT> ConcurrentClient<RF, D, NT>
-    where D: ApplicationData + 'static,
-          RF: ReconfigurationProtocol, NT: 'static {
+where
+    D: ApplicationData + 'static,
+    RF: ReconfigurationProtocol,
+    NT: 'static,
+{
     /// Creates a new concurrent client, from an already existing client
     pub fn from_client(client: Client<RF, D, NT>, session_limit: usize) -> Result<Self>
-        where NT: RegularNetworkStub<SMRSysMsg<D>>, {
+    where
+        NT: RegularNetworkStub<SMRSysMsg<D>>,
+    {
         let (tx, rx) = channel::new_bounded_sync(session_limit, None::<String>);
 
         let id = client.id();
@@ -95,8 +105,10 @@ impl<RF, D, NT> ConcurrentClient<RF, D, NT>
     /// Updates the replicated state of the application running
     /// on top of `atlas`.
     pub async fn update<T>(&self, request: D::Request) -> Result<D::Reply>
-        where T: ClientType<RF, D, NT> + 'static,
-              NT: RegularNetworkStub<SMRSysMsg<D>>, {
+    where
+        T: ClientType<RF, D, NT> + 'static,
+        NT: RegularNetworkStub<SMRSysMsg<D>>,
+    {
         let mut session = self.get_session()?;
 
         let result = session.update::<T>(request).await;
@@ -113,9 +125,15 @@ impl<RF, D, NT> ConcurrentClient<RF, D, NT>
     /// So in the callback, we should not perform any heavy computations / blocking operations as that
     /// will hurt the performance of the client. If you wish to perform heavy operations, move them
     /// to other threads to prevent slowdowns
-    pub fn update_callback<T>(&self, request: D::Request, callback: RequestCallback<D>) -> Result<()>
-        where T: ClientType<RF, D, NT> + 'static,
-              NT: RegularNetworkStub<SMRSysMsg<D>>, {
+    pub fn update_callback<T>(
+        &self,
+        request: D::Request,
+        callback: RequestCallback<D>,
+    ) -> Result<()>
+    where
+        T: ClientType<RF, D, NT> + 'static,
+        NT: RegularNetworkStub<SMRSysMsg<D>>,
+    {
         let mut session = self.get_session()?;
 
         let session_return = self.session_return.clone();

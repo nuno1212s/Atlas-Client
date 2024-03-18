@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
-use std::sync::{Mutex};
 use atlas_common::Err;
+use std::sync::Mutex;
 
 use atlas_common::error::*;
 use atlas_common::node_id::NodeId;
@@ -9,11 +9,11 @@ use atlas_common::ordering::SeqNo;
 use atlas_communication::byte_stub::connections::NetworkConnectionController;
 use atlas_communication::stub::NetworkStub;
 use atlas_core::messages::RequestMessage;
-use atlas_smr_application::serialize::ApplicationData;
 use atlas_core::reconfiguration_protocol::ReconfigurationProtocol;
+use atlas_smr_application::serialize::ApplicationData;
 use atlas_smr_core::message::{OrderableMessage, SystemMessage};
 use atlas_smr_core::networking::client::SMRClientNetworkNode;
-use atlas_smr_core::serialize::{ SMRSysMessage};
+use atlas_smr_core::serialize::SMRSysMessage;
 
 use super::{Client, ClientError, ClientType};
 
@@ -51,16 +51,18 @@ impl FollowerData {
 }
 
 impl<RF, D, NT> Client<RF, D, NT>
-    where
-        D: ApplicationData + 'static,
-        RF: ReconfigurationProtocol + 'static,
+where
+    D: ApplicationData + 'static,
+    RF: ReconfigurationProtocol + 'static,
 {
     ///Connect to a follower with a given node id
     ///
     /// Returns Err if we are already connecting to or connected to
     /// the given follower.
-    fn connect_to_follower(&self, node_id: NodeId) -> Result<()> where
-        NT: SMRClientNetworkNode<RF::InformationProvider, RF::Serialization, D>, {
+    fn connect_to_follower(&self, node_id: NodeId) -> Result<()>
+    where
+        NT: SMRClientNetworkNode<RF::InformationProvider, RF::Serialization, D>,
+    {
         {
             let connecting = self.data.follower_data.connecting_followers.lock().unwrap();
 
@@ -81,13 +83,19 @@ impl<RF, D, NT> Client<RF, D, NT>
 
         let callback = Box::new(move |res| {
             let mut connecting_followers = client_data
-                .follower_data.connecting_followers.lock().unwrap();
+                .follower_data
+                .connecting_followers
+                .lock()
+                .unwrap();
 
             connecting_followers.remove(&node_id);
 
             if res {
                 let mut connected_followers = client_data
-                    .follower_data.connected_followers.lock().unwrap();
+                    .follower_data
+                    .connected_followers
+                    .lock()
+                    .unwrap();
 
                 connected_followers.insert(node_id);
             }
@@ -102,20 +110,19 @@ impl<RF, D, NT> Client<RF, D, NT>
 pub struct Unordered;
 
 impl<RF, D, NT> ClientType<RF, D, NT> for Unordered
-    where
-        D: ApplicationData + 'static,
-        RF: ReconfigurationProtocol + 'static,
+where
+    D: ApplicationData + 'static,
+    RF: ReconfigurationProtocol + 'static,
 {
     fn init_request(
         session_id: SeqNo,
         operation_id: SeqNo,
         operation: D::Request,
-    ) -> SMRSysMessage<D>
-    {
+    ) -> SMRSysMessage<D> {
         OrderableMessage::UnorderedRequest(RequestMessage::new(session_id, operation_id, operation))
     }
 
-    type Iter = impl Iterator<Item=NodeId>;
+    type Iter = impl Iterator<Item = NodeId>;
 
     fn init_targets(client: &Client<RF, D, NT>) -> (Self::Iter, usize) {
         /*
