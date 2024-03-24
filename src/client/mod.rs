@@ -313,7 +313,6 @@ where
 
     let timeouts = Timeouts::new::<RequestMessage<D::Request>>(
         node.app_node().id(),
-        Duration::from_millis(1),
         default_timeout,
         exec_tx.clone(),
     );
