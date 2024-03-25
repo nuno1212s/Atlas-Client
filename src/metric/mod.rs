@@ -25,6 +25,9 @@ pub const CLIENT_RQ_DELIVER_RESPONSE_ID: usize = 305;
 pub const CLIENT_RQ_TIMEOUT: &str = "CLIENT_RQ_TIMEOUT";
 pub const CLIENT_RQ_TIMEOUT_ID: usize = 306;
 
+pub const CLIENT_UNORDERED_RQ_LATENCY: &str = "CLIENT_UNORDERED_RQ_LATENCY";
+pub const CLIENT_UNORDERED_RQ_LATENCY_ID: usize = 307;
+
 pub fn metrics() -> Vec<MetricRegistry> {
     vec![
         (
@@ -71,6 +74,13 @@ pub fn metrics() -> Vec<MetricRegistry> {
             CLIENT_RQ_TIMEOUT_ID,
             CLIENT_RQ_TIMEOUT.to_string(),
             MetricKind::Counter,
+        )
+            .into(),
+        (
+            CLIENT_UNORDERED_RQ_LATENCY_ID,
+            CLIENT_UNORDERED_RQ_LATENCY.to_string(),
+            MetricKind::Duration,
+            MetricLevel::Info
         )
             .into(),
     ]

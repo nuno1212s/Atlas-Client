@@ -17,7 +17,7 @@ use std::sync::Arc;
 use crate::client::ClientData;
 use crate::client::{register_callback, Client, ClientConfig, ClientType, RequestCallback};
 
-/// A client implementation that will automagically manage all of the sessions required, reutilizing them
+/// A client implementation that will automagically manage all the sessions required, re-utilizing them
 /// as much as possible
 /// Can be cloned in order to be used in multiple locations simultaneously
 #[derive(Clone)]
@@ -39,7 +39,7 @@ where
     NT: SMRClientNetworkNode<RP::InformationProvider, RP::Serialization, D> + 'static,
     ROP: OrderProtocolTolerance,
 {
-    /// Creates a new concurrent client, with the given configuration
+    // Creates a new concurrent client, with the given configuration
     let (tx, rx) = channel::new_bounded_sync(session_limit, None::<String>);
 
     let client = client::bootstrap_client::<RP, D, NT, ROP>(id, cfg).await?;
