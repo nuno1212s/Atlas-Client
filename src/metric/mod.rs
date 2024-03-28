@@ -80,7 +80,7 @@ pub fn metrics() -> Vec<MetricRegistry> {
             CLIENT_UNORDERED_RQ_LATENCY_ID,
             CLIENT_UNORDERED_RQ_LATENCY.to_string(),
             MetricKind::Duration,
-            MetricLevel::Info
+            MetricLevel::Info,
         )
             .into(),
     ]

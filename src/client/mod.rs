@@ -4,8 +4,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::ops::Deref;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 use std::time::Instant;
@@ -13,15 +13,15 @@ use std::time::Instant;
 use anyhow::Error;
 use futures_timer::Delay;
 use intmap::IntMap;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use thiserror::Error;
 
+use atlas_common::{async_runtime, channel, Err};
 use atlas_common::channel::ChannelSyncRx;
 use atlas_common::crypto::hash::Digest;
 use atlas_common::error::*;
 use atlas_common::node_id::NodeId;
 use atlas_common::ordering::{Orderable, SeqNo};
-use atlas_common::{async_runtime, channel, Err};
 use atlas_communication::reconfiguration::ReconfigurationMessageHandler;
 use atlas_communication::stub::{
     ModuleIncomingStub, ModuleOutgoingStub, NetworkStub, RegularNetworkStub,
@@ -39,7 +39,11 @@ use atlas_smr_core::message::OrderableMessage;
 use atlas_smr_core::networking::client::SMRClientNetworkNode;
 use atlas_smr_core::serialize::{SMRSysMessage, SMRSysMsg};
 
-use crate::metric::{CLIENT_RQ_DELIVER_RESPONSE_ID, CLIENT_RQ_LATENCY_ID, CLIENT_RQ_PER_SECOND_ID, CLIENT_RQ_RECV_PER_SECOND_ID, CLIENT_RQ_RECV_TIME_ID, CLIENT_RQ_SEND_TIME_ID, CLIENT_RQ_TIMEOUT_ID, CLIENT_UNORDERED_RQ_LATENCY_ID};
+use crate::metric::{
+    CLIENT_RQ_DELIVER_RESPONSE_ID, CLIENT_RQ_LATENCY_ID, CLIENT_RQ_PER_SECOND_ID,
+    CLIENT_RQ_RECV_PER_SECOND_ID, CLIENT_RQ_RECV_TIME_ID, CLIENT_RQ_SEND_TIME_ID,
+    CLIENT_RQ_TIMEOUT_ID, CLIENT_UNORDERED_RQ_LATENCY_ID,
+};
 
 use self::unordered_client::{FollowerData, UnorderedClientMode};
 
@@ -599,8 +603,6 @@ impl<D, RP, NT> Client<RP, D, NT>
     ) where
         NT: RegularNetworkStub<SMRSysMsg<D>>,
     {
-        let node = node.clone();
-
         async_runtime::spawn(async move {
             //Timeout delay
             Delay::new(Duration::from_secs(3)).await;
@@ -624,33 +626,14 @@ impl<D, RP, NT> Client<RP, D, NT>
                         }
                         ClientAwaker::Async(None) => {
                             //TODO: This has to be handled (should populate the ready with an empty, but timed out ready)
-                            debug!("Weird timeout");
+                            warn!("Weird timeout");
                         }
                     }
 
                     debug!("Request {:?} of session {:?} timed out", rq_id, session_id);
 
-                    /*if let Some(sent_rqs) = &node.sent_rqs {
-                        let bucket = &sent_rqs[req_key as usize % sent_rqs.len()];
-
-                        if bucket.contains_key(&req_key) {
-                            error!("{:?} // Request {:?} of session {:?} was SENT and timed OUT! Request key {}", node_id,
-                    rq_id, session_id,get_request_key(session_id, rq_id));
-                        };
-                    } else {
-                        error!("{:?} // Request {:?} of session {:?} was NOT SENT and timed OUT! Request key {}", node_id,
-                    rq_id, session_id, get_request_key(session_id, rq_id));
-                    }*/
-                } else {
-                    /*if let Some(sent_rqs) = &node.sent_rqs {
-                        //Cleanup
-                        let bucket = &sent_rqs[req_key as usize % sent_rqs.len()];
-
-                        bucket.remove(&req_key);
-                    }*/
+                    metric_increment(CLIENT_RQ_TIMEOUT_ID, Some(1));
                 }
-
-                metric_increment(CLIENT_RQ_TIMEOUT_ID, Some(1));
             }
         });
     }
@@ -930,13 +913,7 @@ impl<D, RP, NT> Client<RP, D, NT>
 
                         let ready = get_ready::<RP, D>(session_id, &*data);
 
-                        Self::deliver_response(
-                            node.id(),
-                            request_key,
-                            votes,
-                            ready,
-                            sys_msg,
-                        );
+                        Self::deliver_response(node.id(), request_key, votes, ready, sys_msg);
                     } else {
                         //If we do not have f+1 replies yet, check if it's still possible to get those
                         //Replies by taking a look at the target count and currently received replies count
