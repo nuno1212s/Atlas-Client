@@ -18,6 +18,7 @@ log = "*"
 intmap = "*"
 futures-timer = "*"
 num_cpus = "*"
+lazy_static = "1"
 atlas-communication = { path = "../Atlas-Communication" }
 atlas-smr-application = { path = "../Atlas-SMR-Application" }
 atlas-smr-core = { path = "../Atlas-SMR-Core" }

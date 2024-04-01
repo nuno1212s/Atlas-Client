@@ -4,3 +4,4 @@
 pub mod client;
 pub mod concurrent_client;
 pub mod metric;
+mod timeout_handler;

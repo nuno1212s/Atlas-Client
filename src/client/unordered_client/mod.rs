@@ -1,17 +1,16 @@
 use std::collections::BTreeSet;
-
-use atlas_common::Err;
 use std::sync::Mutex;
 
 use atlas_common::error::*;
 use atlas_common::node_id::NodeId;
 use atlas_common::ordering::SeqNo;
+use atlas_common::Err;
 use atlas_communication::byte_stub::connections::NetworkConnectionController;
 use atlas_communication::stub::NetworkStub;
 use atlas_core::messages::RequestMessage;
 use atlas_core::reconfiguration_protocol::ReconfigurationProtocol;
 use atlas_smr_application::serialize::ApplicationData;
-use atlas_smr_core::message::{OrderableMessage, SystemMessage};
+use atlas_smr_core::message::OrderableMessage;
 use atlas_smr_core::networking::client::SMRClientNetworkNode;
 use atlas_smr_core::serialize::SMRSysMessage;
 

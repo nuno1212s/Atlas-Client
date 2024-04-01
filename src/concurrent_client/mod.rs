@@ -6,8 +6,6 @@ use atlas_common::{channel, quiet_unwrap};
 use atlas_communication::stub::RegularNetworkStub;
 use atlas_core::ordering_protocol::OrderProtocolTolerance;
 use atlas_core::reconfiguration_protocol::ReconfigurationProtocol;
-use atlas_reconfiguration::message::ReconfData;
-use atlas_reconfiguration::network_reconfig::NetworkInfo;
 use atlas_smr_application::serialize::ApplicationData;
 use atlas_smr_core::networking::client::SMRClientNetworkNode;
 use atlas_smr_core::serialize::SMRSysMsg;

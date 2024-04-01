@@ -1,11 +1,12 @@
-use super::{Client, ClientType};
 use atlas_common::node_id::NodeId;
 use atlas_common::ordering::SeqNo;
 use atlas_core::messages::RequestMessage;
 use atlas_core::reconfiguration_protocol::ReconfigurationProtocol;
 use atlas_smr_application::serialize::ApplicationData;
-use atlas_smr_core::message::{OrderableMessage, SystemMessage};
+use atlas_smr_core::message::OrderableMessage;
 use atlas_smr_core::serialize::SMRSysMessage;
+
+use super::{Client, ClientType};
 
 pub struct Ordered;
 
