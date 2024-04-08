@@ -14,10 +14,11 @@ default = ["serialize_serde"]
 [dependencies]
 anyhow = "1.0"
 thiserror = "1.0"
-log = "*"
+tracing = "*"
 intmap = "*"
 futures-timer = "*"
 num_cpus = "*"
+itertools = "*"
 lazy_static = "1"
 atlas-communication = { path = "../Atlas-Communication" }
 atlas-smr-application = { path = "../Atlas-SMR-Application" }
