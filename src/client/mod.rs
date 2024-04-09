@@ -988,6 +988,8 @@ impl<D, RP, NT> Client<RP, D, NT>
 
     fn receive_from_timeouts(data: &Arc<ClientData<RP, D>>, exec_rx: &ChannelSyncRx<Vec<Timeout>>) {
         while let Ok(timeouts) = exec_rx.try_recv() {
+            info!("Received {:?} timeouts", timeouts.len());
+            
             timeouts
                 .into_iter()
                 .group_by(|timeout| timeout.id().mod_id().clone())
