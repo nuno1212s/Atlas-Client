@@ -9,8 +9,8 @@ use atlas_core::reconfiguration_protocol::ReconfigurationProtocol;
 use atlas_smr_application::serialize::ApplicationData;
 use atlas_smr_core::networking::client::SMRClientNetworkNode;
 use atlas_smr_core::serialize::SMRSysMsg;
-use tracing::error;
 use std::sync::Arc;
+use tracing::error;
 
 use crate::client::ClientData;
 use crate::client::{register_callback, Client, ClientConfig, ClientType, RequestCallback};
