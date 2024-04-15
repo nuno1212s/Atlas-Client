@@ -31,7 +31,7 @@ use atlas_communication::stub::{
 use atlas_core::messages::{ReplyMessage, RequestMessage};
 use atlas_core::ordering_protocol::OrderProtocolTolerance;
 use atlas_core::reconfiguration_protocol::{
-    QuorumUpdateMessage, ReconfigResponse, ReconfigurableNodeTypes, ReconfigurationProtocol,
+    QuorumUpdateMessage, ReconfigResponse, ReconfigurableNodeType, ReconfigurationProtocol,
 };
 use atlas_core::timeouts;
 use atlas_core::timeouts::timeout::{ModTimeout, TimeoutModHandle};
@@ -337,7 +337,7 @@ pub async fn bootstrap_client<RP, D, NT, ROP>(
         network_info_provider,
         node.reconfiguration_node().clone(),
         timeouts.gen_mod_handle_for::<RP, ReconfigResponse>(),
-        ReconfigurableNodeTypes::ClientNode(reconf_tx),
+        ReconfigurableNodeType::ClientNode(reconf_tx),
         reconfiguration_network_updater,
         ROP::get_n_for_f(1),
     )
