@@ -24,15 +24,12 @@ use atlas_common::error::*;
 use atlas_common::node_id::NodeId;
 use atlas_common::ordering::{Orderable, SeqNo};
 use atlas_common::{async_runtime, channel, Err};
-use atlas_communication::reconfiguration::ReconfigurationMessageHandler;
 use atlas_communication::stub::{
     ModuleIncomingStub, ModuleOutgoingStub, NetworkStub, RegularNetworkStub,
 };
 use atlas_core::messages::{ReplyMessage, RequestMessage};
 use atlas_core::ordering_protocol::OrderProtocolTolerance;
-use atlas_core::reconfiguration_protocol::{
-    QuorumUpdateMessage, ReconfigResponse, ReconfigurableNodeType, ReconfigurationProtocol,
-};
+use atlas_core::reconfiguration_protocol::{QuorumUpdateMessage, ReconfigResponse, ReconfigurableNodeType, ReconfigurationCommunicationHandles, ReconfigurationProtocol};
 use atlas_core::timeouts;
 use atlas_core::timeouts::timeout::{ModTimeout, TimeoutModHandle};
 use atlas_core::timeouts::{Timeout, TimeoutID};
@@ -107,8 +104,8 @@ impl<P> Deref for Callback<P> {
 }
 
 pub struct ClientData<RF, D>
-    where
-        D: ApplicationData + 'static,
+where
+    D: ApplicationData + 'static,
 {
     //The global session counter, so we don't have two client objects with the same session number
     session_counter: AtomicU32,
@@ -141,8 +138,8 @@ pub struct ClientData<RF, D>
 }
 
 pub trait ClientType<RF, D, NT>
-    where
-        D: ApplicationData + 'static,
+where
+    D: ApplicationData + 'static,
 {
     ///Initialize request in accordance with the type of clients
     fn init_request(
@@ -152,7 +149,7 @@ pub trait ClientType<RF, D, NT>
     ) -> SMRSysMessage<D>;
 
     ///The return types for the iterator
-    type Iter: Iterator<Item=NodeId>;
+    type Iter: Iterator<Item = NodeId>;
 
     ///Initialize the targets for the requests according to the type of request made
     ///
@@ -166,9 +163,9 @@ pub trait ClientType<RF, D, NT>
 /// Represents a client node in `febft`.
 // TODO: maybe make the clone impl more efficient
 pub struct Client<RF, D, NT>
-    where
-        D: ApplicationData + 'static,
-        NT: 'static,
+where
+    D: ApplicationData + 'static,
+    NT: 'static,
 {
     session_id: SeqNo,
     operation_counter: SeqNo,
@@ -253,10 +250,10 @@ impl<'a, P> Future for ClientRequestFut<'a, P> {
 
 /// Represents a configuration used to bootstrap a `Client`.
 pub struct ClientConfig<RF, D, NT>
-    where
-        RF: ReconfigurationProtocol + 'static,
-        D: ApplicationData + 'static,
-        NT: SMRClientNetworkNode<RF::InformationProvider, RF::Serialization, D>,
+where
+    RF: ReconfigurationProtocol + 'static,
+    D: ApplicationData + 'static,
+    NT: SMRClientNetworkNode<RF::InformationProvider, RF::Serialization, D>,
 {
     pub unordered_rq_mode: UnorderedClientMode,
 
@@ -289,11 +286,11 @@ pub async fn bootstrap_client<RP, D, NT, ROP>(
     id: NodeId,
     cfg: ClientConfig<RP, D, NT>,
 ) -> Result<Client<RP, D, NT::AppNode>>
-    where
-        RP: ReconfigurationProtocol + 'static,
-        D: ApplicationData + 'static,
-        NT: SMRClientNetworkNode<RP::InformationProvider, RP::Serialization, D> + 'static,
-        ROP: OrderProtocolTolerance,
+where
+    RP: ReconfigurationProtocol + 'static,
+    D: ApplicationData + 'static,
+    NT: SMRClientNetworkNode<RP::InformationProvider, RP::Serialization, D> + 'static,
+    ROP: OrderProtocolTolerance,
 {
     let ClientConfig {
         node: node_config,
@@ -303,7 +300,7 @@ pub async fn bootstrap_client<RP, D, NT, ROP>(
 
     let network_info_provider = RP::init_default_information(reconfiguration)?;
 
-    let reconfiguration_network_updater = ReconfigurationMessageHandler::initialize();
+    let (network_reconfig_updater, reconfiguration_network_updater) = atlas_communication::reconfiguration::initialize_network_reconfiguration_comms(100);
 
     // connect to peer nodes
     //
@@ -313,9 +310,9 @@ pub async fn bootstrap_client<RP, D, NT, ROP>(
     let node = NT::bootstrap(
         network_info_provider.clone(),
         node_config,
-        reconfiguration_network_updater.clone(),
+        network_reconfig_updater.clone(),
     )
-        .await?;
+    .await?;
 
     let node = Arc::new(node);
 
@@ -329,19 +326,24 @@ pub async fn bootstrap_client<RP, D, NT, ROP>(
     );
 
     let (reconf_tx, reconf_rx) = channel::new_bounded_sync(128, Some("Reconfiguration Channel"));
+    let (ntwrk_tx, ntwrk_rx) = channel::new_bounded_sync(128, Some("Network reconfig channel"));
 
     // TODO: Make timeouts actually work properly with the clients (including making the normal
     //timeouts utilize this same system)
 
+    let reconfig_comm_handles = (ntwrk_tx,
+        ReconfigurableNodeType::ClientNode(reconf_tx)
+        ).into();
+    
     let reconfig_protocol = RP::initialize_protocol(
         network_info_provider,
         node.reconfiguration_node().clone(),
         timeouts.gen_mod_handle_for::<RP, ReconfigResponse>(),
-        ReconfigurableNodeType::ClientNode(reconf_tx),
+        reconfig_comm_handles,
         reconfiguration_network_updater,
         ROP::get_n_for_f(1),
     )
-        .await?;
+    .await?;
 
     info!(
         "{:?} // Waiting for reconfiguration to stabilize...",
@@ -411,15 +413,15 @@ pub async fn bootstrap_client<RP, D, NT, ROP>(
 }
 
 impl<D, RP, NT> Client<RP, D, NT>
-    where
-        RP: ReconfigurationProtocol + 'static,
-        D: ApplicationData + 'static,
-        NT: 'static,
+where
+    RP: ReconfigurationProtocol + 'static,
+    D: ApplicationData + 'static,
+    NT: 'static,
 {
     #[inline]
     pub fn id(&self) -> NodeId
-        where
-            NT: RegularNetworkStub<SMRSysMsg<D>>,
+    where
+        NT: RegularNetworkStub<SMRSysMsg<D>>,
     {
         self.node.id()
     }
@@ -441,10 +443,10 @@ impl<D, RP, NT> Client<RP, D, NT>
         &mut self,
         operation: D::Request,
     ) -> Result<ClientRequestFut<D::Reply>>
-        where
-            T: ClientType<RP, D, NT>,
-            NT: RegularNetworkStub<SMRSysMsg<D>>,
-            RP: ReconfigurationProtocol + 'static,
+    where
+        T: ClientType<RP, D, NT>,
+        NT: RegularNetworkStub<SMRSysMsg<D>>,
+        RP: ReconfigurationProtocol + 'static,
     {
         let start = Instant::now();
 
@@ -503,19 +505,19 @@ impl<D, RP, NT> Client<RP, D, NT>
     /// Updates the replicated state of the application running
     /// on top of `atlas`.
     pub async fn update<T>(&mut self, operation: D::Request) -> Result<D::Reply>
-        where
-            T: ClientType<RP, D, NT>,
-            NT: RegularNetworkStub<SMRSysMsg<D>>,
-            RP: ReconfigurationProtocol + 'static,
+    where
+        T: ClientType<RP, D, NT>,
+        NT: RegularNetworkStub<SMRSysMsg<D>>,
+        RP: ReconfigurationProtocol + 'static,
     {
         self.update_inner::<T>(operation)?.await
     }
 
     pub(super) fn update_callback_inner<T>(&mut self, operation: D::Request) -> u64
-        where
-            T: ClientType<RP, D, NT>,
-            NT: RegularNetworkStub<SMRSysMsg<D>>,
-            RP: ReconfigurationProtocol + 'static,
+    where
+        T: ClientType<RP, D, NT>,
+        NT: RegularNetworkStub<SMRSysMsg<D>>,
+        RP: ReconfigurationProtocol + 'static,
     {
         let start = Instant::now();
 
@@ -572,10 +574,10 @@ impl<D, RP, NT> Client<RP, D, NT>
     /// will hurt the performance of the client. If you wish to perform heavy operations, move them
     /// to other threads to prevent slowdowns
     pub fn update_callback<T>(&mut self, operation: D::Request, callback: RequestCallback<D>)
-        where
-            T: ClientType<RP, D, NT>,
-            NT: RegularNetworkStub<SMRSysMsg<D>>,
-            RP: ReconfigurationProtocol + 'static,
+    where
+        T: ClientType<RP, D, NT>,
+        NT: RegularNetworkStub<SMRSysMsg<D>>,
+        RP: ReconfigurationProtocol + 'static,
     {
         let rq_key = self.update_callback_inner::<T>(operation);
 
@@ -684,7 +686,7 @@ impl<D, RP, NT> Client<RP, D, NT>
                     if request.timed_out.load(Ordering::Relaxed) {
                         error!(
                             "{:?} // Received response to timed out request {:?} on session {:?}",
-                            node_id, operation_id, session_id, 
+                            node_id, operation_id, session_id,
                         );
                     }
 
@@ -763,7 +765,7 @@ impl<D, RP, NT> Client<RP, D, NT>
                     if request.timed_out.load(Ordering::Relaxed) {
                         error!(
                             "{:?} // Received response to timed out request {:?} on session {:?}",
-                            node_id,operation_id, session_id, 
+                            node_id, operation_id, session_id,
                         );
                     }
 
