@@ -29,7 +29,10 @@ use atlas_communication::stub::{
 };
 use atlas_core::messages::{ReplyMessage, RequestMessage};
 use atlas_core::ordering_protocol::OrderProtocolTolerance;
-use atlas_core::reconfiguration_protocol::{QuorumUpdateMessage, ReconfigResponse, ReconfigurableNodeType, ReconfigurationCommunicationHandles, ReconfigurationProtocol};
+use atlas_core::reconfiguration_protocol::{
+    QuorumUpdateMessage, ReconfigResponse, ReconfigurableNodeType,
+    ReconfigurationCommunicationHandles, ReconfigurationProtocol,
+};
 use atlas_core::timeouts;
 use atlas_core::timeouts::timeout::{ModTimeout, TimeoutModHandle};
 use atlas_core::timeouts::{Timeout, TimeoutID};
@@ -300,7 +303,8 @@ where
 
     let network_info_provider = RP::init_default_information(reconfiguration)?;
 
-    let (network_reconfig_updater, reconfiguration_network_updater) = atlas_communication::reconfiguration::initialize_network_reconfiguration_comms(100);
+    let (network_reconfig_updater, reconfiguration_network_updater) =
+        atlas_communication::reconfiguration::initialize_network_reconfiguration_comms(100);
 
     // connect to peer nodes
     //
@@ -331,10 +335,8 @@ where
     // TODO: Make timeouts actually work properly with the clients (including making the normal
     //timeouts utilize this same system)
 
-    let reconfig_comm_handles = (ntwrk_tx,
-        ReconfigurableNodeType::ClientNode(reconf_tx)
-        ).into();
-    
+    let reconfig_comm_handles = (ntwrk_tx, ReconfigurableNodeType::ClientNode(reconf_tx)).into();
+
     let reconfig_protocol = RP::initialize_protocol(
         network_info_provider,
         node.reconfiguration_node().clone(),
