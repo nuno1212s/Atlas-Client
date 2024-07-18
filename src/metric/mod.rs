@@ -34,8 +34,8 @@ pub fn metrics() -> Vec<MetricRegistry> {
             CLIENT_RQ_PER_SECOND_ID,
             CLIENT_RQ_PER_SECOND.to_string(),
             MetricKind::Counter,
-            MetricLevel::Trace,
-            8,
+            MetricLevel::Info,
+            4,
         )
             .into(),
         (
