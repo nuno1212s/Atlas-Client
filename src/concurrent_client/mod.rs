@@ -9,10 +9,10 @@ use atlas_core::reconfiguration_protocol::ReconfigurationProtocol;
 use atlas_smr_application::serialize::ApplicationData;
 use atlas_smr_core::networking::client::SMRClientNetworkNode;
 use atlas_smr_core::serialize::SMRSysMsg;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tracing::error;
 
-use crate::client::ClientData;
+use crate::client::{get_request_key, ClientData};
 use crate::client::{register_callback, Client, ClientConfig, ClientType, RequestCallback};
 
 /// A client implementation that will automagically manage all the sessions required, re-utilizing them
@@ -133,21 +133,31 @@ where
         NT: RegularNetworkStub<SMRSysMsg<D>>,
     {
         let mut session = self.get_session()?;
+        
+        let session_id = session.session_id();
 
         let session_return = self.session_return.clone();
 
-        let request_key = session.update_callback_inner::<T>(request);
+        let operation_id = session.next_operation_id();
 
-        let session_id = session.session_id();
+        let rq_key = get_request_key(session_id, operation_id);
+
+        let (return_session_tx, return_session_rx) = channel::new_oneshot_channel();
 
         let callback = Box::new(move |reply| {
             callback(reply);
 
-            quiet_unwrap!(session_return.send(session));
+            let client = return_session_rx.recv().expect("Failed to get returned session");
+            
+            quiet_unwrap!(session_return.send(client));
         });
 
-        register_callback(session_id, request_key, &*self.client_data, callback);
+        register_callback(session_id, rq_key, &*self.client_data, callback);
 
+        session.update_callback_inner::<T>(request, operation_id);
+        
+        return_session_tx.send(session)?;
+        
         Ok(())
     }
 }

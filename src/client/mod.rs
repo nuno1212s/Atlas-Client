@@ -325,7 +325,7 @@ where
     let timeouts = timeouts::initialize_timeouts(
         node.app_node().id(),
         1,
-        496,
+        4096,
         CLITimeoutHandler::from(exec_tx),
     );
 
@@ -478,9 +478,6 @@ where
             request_info_guard.insert(request_key, sent_info);
         }
 
-        // broadcast our request to the node group
-        let _ = self.node.outgoing_stub().broadcast_signed(message, targets);
-
         // await response
         let ready = get_ready::<RP, D>(session_id, &*self.data);
 
@@ -489,6 +486,9 @@ where
 
             ready_stored.insert(request_key, ClientAwaker::Async(None));
         }
+
+        // broadcast our request to the node group
+        let _ = self.node.outgoing_stub().broadcast_signed(message, targets);
 
         Self::start_timeout(
             self.node.clone(),
@@ -515,7 +515,7 @@ where
         self.update_inner::<T>(operation)?.await
     }
 
-    pub(super) fn update_callback_inner<T>(&mut self, operation: D::Request) -> u64
+    pub(super) fn update_callback_inner<T>(&self, operation: D::Request, operation_id: SeqNo) -> u64
     where
         T: ClientType<RP, D, NT>,
         NT: RegularNetworkStub<SMRSysMsg<D>>,
@@ -525,8 +525,6 @@ where
 
         let session_id = self.session_id;
 
-        let operation_id = self.next_operation_id();
-
         let message = T::init_request(session_id, operation_id, operation);
 
         // await response
@@ -534,7 +532,7 @@ where
 
         //We only send the message after storing the callback to prevent us receiving the result without having
         //The callback registered, therefore losing the response
-        let (targets, target_count) = T::init_targets(&self);
+        let (targets, target_count) = T::init_targets(self);
 
         let request_info = get_request_info(session_id, &*self.data);
 
@@ -581,12 +579,17 @@ where
         NT: RegularNetworkStub<SMRSysMsg<D>>,
         RP: ReconfigurationProtocol + 'static,
     {
-        let rq_key = self.update_callback_inner::<T>(operation);
+
+        let operation_id = self.next_operation_id();
+
+        let rq_key = get_request_key(self.session_id, operation_id);
 
         register_callback(self.session_id, rq_key, &*self.data, callback);
+
+        self.update_callback_inner::<T>(operation, operation_id);
     }
 
-    fn next_operation_id(&mut self) -> SeqNo {
+    pub(super) fn next_operation_id(&mut self) -> SeqNo {
         let id = self.operation_counter;
 
         self.operation_counter = self.operation_counter.next();
@@ -596,7 +599,7 @@ where
 
     ///Start performing a timeout for a given request.
     /// TODO: Repeat the request/do something else to fix this
-    #[instrument(skip(node, client_data), level = "debug")]
+    //#[instrument(skip(node, client_data), level = "debug")]
     fn start_timeout(
         node: Arc<NT>,
         session_id: SeqNo,
@@ -620,7 +623,7 @@ where
     }
 
     /// Create the default replica vote struct
-    #[instrument(skip(request_info), level = "debug")]
+    //#[instrument(skip(request_info), level = "debug")]
     fn create_replica_votes(
         request_info: &Mutex<IntMap<SentRequestInfo>>,
         request_key: u64,
@@ -654,7 +657,7 @@ where
     }
 
     ///Deliver the response to the client
-    #[instrument(skip(vote, ready, message), level = "debug")]
+    //#[instrument(skip(vote, ready, message), level = "debug")]
     fn deliver_response(
         node_id: NodeId,
         request_key: u64,
@@ -723,7 +726,7 @@ where
                 }
             }
         } else {
-            error!("Failed to get awaker for request {:?}", request_key)
+            error!("Failed to get awaker for request {:?} ", request_key)
         }
 
         {
@@ -740,7 +743,7 @@ where
     }
 
     ///Deliver an error response
-    #[instrument(skip(ready), level = "warn")]
+    //#[instrument(skip(ready), level = "warn")]
     fn deliver_error(
         node_id: NodeId,
         request_key: u64,
@@ -807,7 +810,7 @@ where
     ///This task might become a large bottleneck with the scenario of few clients with high concurrent rqs,
     /// As the replicas will make very large batches and respond to all the sent requests in one go.
     /// This leaves this thread with a very large task to do in a very short time and it just can't keep up
-    #[instrument(skip(data, node, timeout_rx))]
+    //#[instrument(skip(data, node, timeout_rx))]
     fn message_recv_task(
         data: Arc<ClientData<RP, D>>,
         node: Arc<NT>,
@@ -1024,7 +1027,7 @@ where
 }
 
 #[inline]
-fn get_request_key(session_id: SeqNo, operation_id: SeqNo) -> u64 {
+pub(super) fn get_request_key(session_id: SeqNo, operation_id: SeqNo) -> u64 {
     let sess: u64 = session_id.into();
     let opid: u64 = operation_id.into();
     sess | (opid << 32)
