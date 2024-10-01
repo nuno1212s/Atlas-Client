@@ -79,7 +79,7 @@ struct SentRequestInfo {
 enum ClientAwaker<P> {
     //Callbacks have to be set from the start, since they are passed along with the request when the client issues it
     //So we always contain the callback struct
-    Callback(Callback<P>),
+    GenCallback(GenCallback<P>),
     //Requests performed asynchronously however are a bit different. There can be 2 possibilities:
     // Client makes request, performs await (which populates the ready option) and then the responses are received and delivered to the client
     // Client makes requests and does not immediately perform await, the responses are received and the ready is populated with the responses
@@ -93,17 +93,15 @@ struct Ready<P> {
     timed_out: AtomicBool,
 }
 
-struct Callback<P> {
-    to_call: Box<dyn FnOnce(Result<P>) + Send>,
+struct GenCallback<P> {
     timed_out: AtomicBool,
+    callback: InnerCallback<P>
 }
 
-impl<P> Deref for Callback<P> {
-    type Target = Box<dyn FnOnce(Result<P>) + Send>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.to_call
-    }
+enum InnerCallback<P> {
+    Gen(Box<dyn FnOnce(Result<P>) + Send>),
+    Imm(Arc<dyn Fn(Result<P>) + Send + Sync>),
+    Wrapped(Arc<dyn Fn((SeqNo, Result<P>)) + Send + Sync>)
 }
 
 pub struct ClientData<RF, D>
@@ -228,7 +226,7 @@ impl<'a, P> Future for ClientRequestFut<'a, P> {
 
                         awaker.as_mut().unwrap()
                     }
-                    ClientAwaker::Callback(_) => unreachable!(),
+                    ClientAwaker::GenCallback(_) => unreachable!(),
                 };
 
                 if let Some(payload) = request.payload.take() {
@@ -284,6 +282,8 @@ lazy_static! {
 }
 
 pub type RequestCallback<D: ApplicationData> = Box<dyn FnOnce(Result<D::Reply>) + Send>;
+
+pub type RequestCallbackArc<D: ApplicationData> = Arc<dyn Fn(Result<D::Reply>) + Send + Sync>;
 
 pub async fn bootstrap_client<RP, D, NT, ROP>(
     id: NodeId,
@@ -579,7 +579,6 @@ where
         NT: RegularNetworkStub<SMRSysMsg<D>>,
         RP: ReconfigurationProtocol + 'static,
     {
-
         let operation_id = self.next_operation_id();
 
         let rq_key = get_request_key(self.session_id, operation_id);
@@ -679,23 +678,33 @@ where
 
         if let Some(request) = request {
             match request {
-                ClientAwaker::Callback(_) => {
+                ClientAwaker::GenCallback(_) => {
                     //This is impossible to fail since we are in the Some method of the request
                     let request = ready_lock.remove(request_key).unwrap();
-
-                    let request = match request {
-                        ClientAwaker::Callback(request) => request,
-                        _ => unreachable!(),
-                    };
-
-                    if request.timed_out.load(Ordering::Relaxed) {
-                        error!(
+                    
+                    match request {
+                        ClientAwaker::GenCallback(request) => {
+                            if request.timed_out.load(Ordering::Relaxed) {
+                                error!(
                             "{:?} // Received response to timed out request {:?} on session {:?}",
                             node_id, operation_id, session_id,
                         );
-                    }
-
-                    (request.to_call)(Ok(payload));
+                            }
+                            
+                            match request.callback {
+                                InnerCallback::Gen(callback) => {
+                                    callback(Ok(payload));
+                                }
+                                InnerCallback::Imm(callback) => {
+                                    callback(Ok(payload));
+                                }
+                                InnerCallback::Wrapped(callback) => {
+                                    callback((session_id, Ok(payload)));
+                                }
+                            }
+                        }
+                        _ => unreachable!(),
+                    };
                 }
                 ClientAwaker::Async(opt_ready) => {
                     if let Some(request) = opt_ready.as_mut() {
@@ -758,23 +767,33 @@ where
 
         if let Some(request) = request {
             match request {
-                ClientAwaker::Callback(_) => {
+                ClientAwaker::GenCallback(_) => {
                     //This is impossible to fail since we are in the Some method of the request
                     let request = ready_lock.remove(request_key).unwrap();
-
-                    let request = match request {
-                        ClientAwaker::Callback(request) => request,
-                        _ => unreachable!(),
-                    };
-
-                    if request.timed_out.load(Ordering::Relaxed) {
-                        error!(
+                    
+                    match request {
+                        ClientAwaker::GenCallback(request) => {
+                            if request.timed_out.load(Ordering::Relaxed) {
+                                error!(
                             "{:?} // Received response to timed out request {:?} on session {:?}",
                             node_id, operation_id, session_id,
                         );
-                    }
+                            }
 
-                    (request.to_call)(err_msg);
+                            match request.callback {
+                                InnerCallback::Gen(callback) => {
+                                    callback(err_msg);
+                                }
+                                InnerCallback::Imm(callback) => {
+                                    callback(err_msg);
+                                }
+                                InnerCallback::Wrapped(callback) => {
+                                    callback((session_id, err_msg));
+                                }
+                            }
+                        }
+                        _ => unreachable!(),
+                    };
                 }
                 ClientAwaker::Async(opt_ready) => {
                     if let Some(request) = opt_ready.as_mut() {
@@ -971,7 +990,7 @@ where
 
                 if let Some(request) = request {
                     match request {
-                        ClientAwaker::Callback(request) => {
+                        ClientAwaker::GenCallback(request) => {
                             request.timed_out.store(true, Ordering::Relaxed)
                         }
                         ClientAwaker::Async(Some(ready)) => {
@@ -1050,18 +1069,63 @@ pub(super) fn register_callback<RF, D: ApplicationData>(
 ) {
     let ready = get_ready::<RF, D>(session_id, &*data);
 
-    let callback = Callback {
-        to_call: callback,
+    let callback = GenCallback {
         timed_out: AtomicBool::new(false),
+        callback: InnerCallback::Gen(callback),
     };
 
     //Scope the mutex operations to reduce the lifetime of the guard
     {
         let mut ready_callback_guard = ready.lock().unwrap();
 
-        ready_callback_guard.insert(request_key, ClientAwaker::Callback(callback));
+        ready_callback_guard.insert(request_key, ClientAwaker::GenCallback(callback));
     }
 }
+
+#[inline]
+pub(super) fn register_imm_callback<RF, D: ApplicationData>(
+    session_id: SeqNo,
+    request_key: u64,
+    data: &ClientData<RF, D>,
+    callback: RequestCallbackArc<D>,
+) {
+    let ready = get_ready::<RF, D>(session_id, &*data);
+
+    let callback = GenCallback {
+        timed_out: AtomicBool::new(false),
+        callback: InnerCallback::Imm(callback),
+    };
+
+    //Scope the mutex operations to reduce the lifetime of the guard
+    {
+        let mut ready_callback_guard = ready.lock().unwrap();
+
+        ready_callback_guard.insert(request_key, ClientAwaker::GenCallback(callback));
+    }
+}
+
+#[inline]
+pub(super) fn register_wrapped_callback<RF, D: ApplicationData>(
+    session_id: SeqNo,
+    request_key: u64,
+    data: &ClientData<RF, D>,
+    callback: Arc<dyn Fn((SeqNo, Result<D::Reply>)) + Send + Sync>,
+) {
+    let ready = get_ready::<RF, D>(session_id, &*data);
+
+    let callback = GenCallback {
+        timed_out: AtomicBool::new(false),
+        callback: InnerCallback::Wrapped(callback),
+    };
+
+    //Scope the mutex operations to reduce the lifetime of the guard
+    {
+        let mut ready_callback_guard = ready.lock().unwrap();
+
+        ready_callback_guard.insert(request_key, ClientAwaker::GenCallback(callback));
+    }
+}
+
 
 #[inline]
 fn get_ready<RF, D: ApplicationData>(
