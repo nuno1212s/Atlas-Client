@@ -2,7 +2,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
-use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -11,27 +10,24 @@ use std::time::Duration;
 use std::time::Instant;
 
 use anyhow::Error;
-use futures_timer::Delay;
 use intmap::IntMap;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use thiserror::Error;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, error, info, warn};
 
-use atlas_common::channel::ChannelSyncRx;
+use atlas_common::channel::sync::ChannelSyncRx;
 use atlas_common::crypto::hash::Digest;
 use atlas_common::error::*;
 use atlas_common::node_id::NodeId;
 use atlas_common::ordering::{Orderable, SeqNo};
-use atlas_common::{async_runtime, channel, Err};
+use atlas_common::{channel, Err};
 use atlas_communication::stub::{
     ModuleIncomingStub, ModuleOutgoingStub, NetworkStub, RegularNetworkStub,
 };
-use atlas_core::messages::{ReplyMessage, RequestMessage};
 use atlas_core::ordering_protocol::OrderProtocolTolerance;
 use atlas_core::reconfiguration_protocol::{
-    QuorumUpdateMessage, ReconfigResponse, ReconfigurableNodeType,
-    ReconfigurationCommunicationHandles, ReconfigurationProtocol,
+    QuorumUpdateMessage, ReconfigResponse, ReconfigurableNodeType, ReconfigurationProtocol,
 };
 use atlas_core::timeouts;
 use atlas_core::timeouts::timeout::{ModTimeout, TimeoutModHandle};
@@ -286,7 +282,7 @@ pub type RequestCallback<D: ApplicationData> = Box<dyn FnOnce(Result<D::Reply>) 
 pub type RequestCallbackArc<D: ApplicationData> = Arc<dyn Fn(Result<D::Reply>) + Send + Sync>;
 
 pub async fn bootstrap_client<RP, D, NT, ROP>(
-    id: NodeId,
+    _id: NodeId,
     cfg: ClientConfig<RP, D, NT>,
 ) -> Result<Client<RP, D, NT::AppNode>>
 where
@@ -320,7 +316,7 @@ where
 
     let node = Arc::new(node);
 
-    let (exec_tx, exec_rx) = channel::new_bounded_sync(128, Some("Executor Channel"));
+    let (exec_tx, exec_rx) = channel::sync::new_bounded_sync(128, Some("Executor Channel"));
 
     let timeouts = timeouts::initialize_timeouts(
         node.app_node().id(),
@@ -329,8 +325,8 @@ where
         CLITimeoutHandler::from(exec_tx),
     );
 
-    let (reconf_tx, reconf_rx) = channel::new_bounded_sync(128, Some("Reconfiguration Channel"));
-    let (ntwrk_tx, ntwrk_rx) = channel::new_bounded_sync(128, Some("Network reconfig channel"));
+    let (reconf_tx, reconf_rx) = channel::sync::new_bounded_sync(128, Some("Reconfiguration Channel"));
+    let (ntwrk_tx, ntwrk_rx) = channel::sync::new_bounded_sync(128, Some("Network reconfig channel"));
 
     // TODO: Make timeouts actually work properly with the clients (including making the normal
     //timeouts utilize this same system)
@@ -1019,7 +1015,7 @@ where
 
             timeouts
                 .into_iter()
-                .group_by(|timeout| timeout.id().mod_id().clone())
+                .chunk_by(|timeout| timeout.id().mod_id().clone())
                 .into_iter()
                 .map(|(mod_id, timeouts)| (mod_id, timeouts.map(ModTimeout::from)))
                 .map(|(mod_id, timeouts)| (mod_id, timeouts.collect::<Vec<_>>()))
@@ -1036,7 +1032,7 @@ where
     fn receive_reconf_updates(data: &Arc<ClientData<RP, D>>) {
         while let Ok(update) = data.reconfig_protocol_rx.try_recv() {
             match update {
-                QuorumUpdateMessage::UpdatedQuorumView(update) => {}
+                QuorumUpdateMessage::UpdatedQuorumView(_update) => {}
                 _ => {
                     todo!()
                 }

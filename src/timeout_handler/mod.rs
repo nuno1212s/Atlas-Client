@@ -1,4 +1,4 @@
-use atlas_common::channel::ChannelSyncTx;
+use atlas_common::channel::sync::ChannelSyncTx;
 use atlas_core::timeouts::{Timeout, TimeoutWorkerResponder};
 
 #[derive(Clone)]

@@ -58,6 +58,7 @@ where
     ///
     /// Returns Err if we are already connecting to or connected to
     /// the given follower.
+    #[allow(dead_code)]
     fn connect_to_follower(&self, node_id: NodeId) -> Result<()>
     where
         NT: SMRClientNetworkNode<RF::InformationProvider, RF::Serialization, D>,
@@ -100,7 +101,7 @@ where
             }
         });
 
-        self.node.app_node().connections().connect_to_node(node_id);
+        let _ = self.node.app_node().connections().connect_to_node(node_id);
 
         Ok(())
     }

@@ -1,5 +1,6 @@
 use crate::client;
-use atlas_common::channel::{ChannelSyncRx, ChannelSyncTx, OneShotRx};
+use atlas_common::channel::sync::{ChannelSyncRx, ChannelSyncTx};
+use atlas_common::channel::oneshot::OneShotRx;
 use atlas_common::error::*;
 use atlas_common::node_id::NodeId;
 use atlas_common::{channel, quiet_unwrap};
@@ -50,7 +51,7 @@ where
     ROP: OrderProtocolTolerance,
 {
     // Creates a new concurrent client, with the given configuration
-    let (tx, rx) = channel::new_bounded_sync(session_limit, None::<String>);
+    let (tx, rx) = channel::sync::new_bounded_sync(session_limit, None::<String>);
 
     let client = client::bootstrap_client::<RP, D, NT, ROP>(id, cfg).await?;
 
@@ -125,7 +126,7 @@ where
     where
         NT: RegularNetworkStub<SMRSysMsg<D>>,
     {
-        let (tx, rx) = channel::new_bounded_sync(session_limit, None::<String>);
+        let (tx, rx) = channel::sync::new_bounded_sync(session_limit, None::<String>);
 
         let id = client.id();
         let data = client.client_data().clone();
@@ -204,7 +205,7 @@ where
 
         let rq_key = get_request_key(session_id, operation_id);
 
-        let (return_session_tx, return_session_rx) = channel::new_oneshot_channel();
+        let (return_session_tx, return_session_rx) = channel::oneshot::new_oneshot_channel();
 
         let callback = Box::new(move |reply| {
             callback(reply);
@@ -241,7 +242,7 @@ where
 
         let rq_key = get_request_key(session_id, operation_id);
 
-        let (return_session_tx, return_session_rx) = channel::new_oneshot_channel();
+        let (return_session_tx, return_session_rx) = channel::oneshot::new_oneshot_channel();
         
         self.register_callback_cleanup(session_id, RequestData {
             client_return: Mutex::new(Some(return_session_rx)),
