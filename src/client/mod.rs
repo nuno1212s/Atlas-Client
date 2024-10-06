@@ -1015,7 +1015,7 @@ where
 
             timeouts
                 .into_iter()
-                .chunk_by(|timeout| timeout.id().mod_id().clone())
+                .group_by(|timeout| timeout.id().mod_id().clone())
                 .into_iter()
                 .map(|(mod_id, timeouts)| (mod_id, timeouts.map(ModTimeout::from)))
                 .map(|(mod_id, timeouts)| (mod_id, timeouts.collect::<Vec<_>>()))
