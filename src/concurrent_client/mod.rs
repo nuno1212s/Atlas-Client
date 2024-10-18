@@ -60,10 +60,10 @@ where
 
     // Populate the channel with the given session limit
     for _ in 1..session_limit {
-        tx.send_return(client.clone())?;
+        tx.send(client.clone())?;
     }
 
-    tx.send_return(client)?;
+    tx.send(client)?;
 
     let (cleanup_task, cleanup_task_data) = initialize_clean_up::<RP, D, NT::AppNode>(tx.clone());
 
@@ -133,10 +133,10 @@ where
 
         // Populate the channel with the given session limit
         for _ in 1..session_limit {
-            tx.send_return(client.clone())?;
+            tx.send(client.clone())?;
         }
 
-        tx.send_return(client)?;
+        tx.send(client)?;
 
         let (cleanup_task, cleanup_task_data) = initialize_clean_up::<RF, D, NT>(tx.clone());
         
@@ -174,7 +174,7 @@ where
 
         let result = session.update::<T>(request).await;
 
-        self.session_return.send_return(session)?;
+        self.session_return.send(session)?;
 
         result
     }
