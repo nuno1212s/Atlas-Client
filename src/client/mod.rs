@@ -115,11 +115,11 @@ where
 
     //Information about the requests that were sent like to how many replicas
     //they sent to, how many responses they need, etc
-    request_info: Vec<Mutex<IntMap<SentRequestInfo>>>,
+    request_info: Vec<Mutex<IntMap<u64, SentRequestInfo>>>,
 
     //The ready items for requests made by this client. This is what is going to be used by the message receive task
     //To call the awaiting tasks
-    ready: Vec<Mutex<IntMap<ClientAwaker<D::Reply>>>>,
+    ready: Vec<Mutex<IntMap<u64, ClientAwaker<D::Reply>>>>,
 
     //Reconfiguration protocol
     reconfig_protocol: RF,
@@ -190,7 +190,7 @@ impl<RF, D: ApplicationData, NT> Clone for Client<RF, D, NT> {
 
 pub(super) struct ClientRequestFut<'a, P> {
     request_key: u64,
-    ready: &'a Mutex<IntMap<ClientAwaker<P>>>,
+    ready: &'a Mutex<IntMap<u64, ClientAwaker<P>>>,
 }
 
 impl<'a, P> Future for ClientRequestFut<'a, P> {
@@ -620,7 +620,7 @@ where
     /// Create the default replica vote struct
     //#[instrument(skip(request_info), level = "debug")]
     fn create_replica_votes(
-        request_info: &Mutex<IntMap<SentRequestInfo>>,
+        request_info: &Mutex<IntMap<u64, SentRequestInfo>>,
         request_key: u64,
         n: usize,
         f: usize,
@@ -657,7 +657,7 @@ where
         node_id: NodeId,
         request_key: u64,
         vote: ReplicaVotes,
-        ready: &Mutex<IntMap<ClientAwaker<D::Reply>>>,
+        ready: &Mutex<IntMap<u64, ClientAwaker<D::Reply>>>,
         message: OrderableMessage<D>,
     ) {
         let start = Instant::now();
@@ -752,7 +752,7 @@ where
     fn deliver_error(
         node_id: NodeId,
         request_key: u64,
-        ready: &Mutex<IntMap<ClientAwaker<D::Reply>>>,
+        ready: &Mutex<IntMap<u64, ClientAwaker<D::Reply>>>,
         (session_id, operation_id): (SeqNo, SeqNo),
     ) {
         let mut ready_lock = ready.lock().unwrap();
@@ -834,8 +834,8 @@ where
         NT: RegularNetworkStub<SMRSysMsg<D>>,
     {
         // use session id as key
-        let mut last_operation_ids: IntMap<SeqNo> = IntMap::new();
-        let mut replica_votes: IntMap<ReplicaVotes> = IntMap::new();
+        let mut last_operation_ids: IntMap<u64, SeqNo> = IntMap::new();
+        let mut replica_votes: IntMap<u64, ReplicaVotes> = IntMap::new();
 
         //TODO: Maybe change this to make clients use the same timeouts service?
         while let Ok(message) = node.incoming_stub().receive_messages() {
@@ -1127,7 +1127,7 @@ pub(super) fn register_wrapped_callback<RF, D: ApplicationData>(
 fn get_ready<RF, D: ApplicationData>(
     session_id: SeqNo,
     data: &ClientData<RF, D>,
-) -> &Mutex<IntMap<ClientAwaker<D::Reply>>> {
+) -> &Mutex<IntMap<u64, ClientAwaker<D::Reply>>> {
     get_correct_vec_for(session_id, &data.ready)
 }
 
@@ -1135,17 +1135,17 @@ fn get_ready<RF, D: ApplicationData>(
 fn get_request_info<RF, D: ApplicationData>(
     session_id: SeqNo,
     data: &ClientData<RF, D>,
-) -> &Mutex<IntMap<SentRequestInfo>> {
+) -> &Mutex<IntMap<u64, SentRequestInfo>> {
     get_correct_vec_for(session_id, &data.request_info)
 }
 
 struct IntMapEntry<'a, T> {
     key: u64,
-    map: &'a mut IntMap<T>,
+    map: &'a mut IntMap<u64, T>,
 }
 
 impl<'a, T> IntMapEntry<'a, T> {
-    fn get(key: u64, map: &'a mut IntMap<T>) -> Self {
+    fn get(key: u64, map: &'a mut IntMap<u64, T>) -> Self {
         Self { key, map }
     }
 
