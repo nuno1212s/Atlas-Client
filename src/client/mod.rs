@@ -91,13 +91,13 @@ struct Ready<P> {
 
 struct GenCallback<P> {
     timed_out: AtomicBool,
-    callback: InnerCallback<P>
+    callback: InnerCallback<P>,
 }
 
 enum InnerCallback<P> {
     Gen(Box<dyn FnOnce(Result<P>) + Send>),
     Imm(Arc<dyn Fn(Result<P>) + Send + Sync>),
-    Wrapped(Arc<dyn Fn((SeqNo, Result<P>)) + Send + Sync>)
+    Wrapped(Arc<dyn Fn((SeqNo, Result<P>)) + Send + Sync>),
 }
 
 pub struct ClientData<RF, D>
@@ -325,8 +325,10 @@ where
         CLITimeoutHandler::from(exec_tx),
     );
 
-    let (reconf_tx, reconf_rx) = channel::sync::new_bounded_sync(128, Some("Reconfiguration Channel"));
-    let (ntwrk_tx, ntwrk_rx) = channel::sync::new_bounded_sync(128, Some("Network reconfig channel"));
+    let (reconf_tx, reconf_rx) =
+        channel::sync::new_bounded_sync(128, Some("Reconfiguration Channel"));
+    let (ntwrk_tx, ntwrk_rx) =
+        channel::sync::new_bounded_sync(128, Some("Network reconfig channel"));
 
     // TODO: Make timeouts actually work properly with the clients (including making the normal
     //timeouts utilize this same system)
@@ -677,7 +679,7 @@ where
                 ClientAwaker::GenCallback(_) => {
                     //This is impossible to fail since we are in the Some method of the request
                     let request = ready_lock.remove(request_key).unwrap();
-                    
+
                     match request {
                         ClientAwaker::GenCallback(request) => {
                             if request.timed_out.load(Ordering::Relaxed) {
@@ -686,7 +688,7 @@ where
                             node_id, operation_id, session_id,
                         );
                             }
-                            
+
                             match request.callback {
                                 InnerCallback::Gen(callback) => {
                                     callback(Ok(payload));
@@ -766,7 +768,7 @@ where
                 ClientAwaker::GenCallback(_) => {
                     //This is impossible to fail since we are in the Some method of the request
                     let request = ready_lock.remove(request_key).unwrap();
-                    
+
                     match request {
                         ClientAwaker::GenCallback(request) => {
                             if request.timed_out.load(Ordering::Relaxed) {
@@ -1121,7 +1123,6 @@ pub(super) fn register_wrapped_callback<RF, D: ApplicationData>(
         ready_callback_guard.insert(request_key, ClientAwaker::GenCallback(callback));
     }
 }
-
 
 #[inline]
 fn get_ready<RF, D: ApplicationData>(
