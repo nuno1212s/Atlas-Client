@@ -1,8 +1,11 @@
 use crate::client;
-use atlas_common::channel::sync::{ChannelSyncRx, ChannelSyncTx};
+use crate::client::{get_request_key, register_wrapped_callback, ClientData, RequestCallbackArc};
+use crate::client::{register_callback, Client, ClientConfig, ClientType, RequestCallback};
 use atlas_common::channel::oneshot::OneShotRx;
+use atlas_common::channel::sync::{ChannelSyncRx, ChannelSyncTx};
 use atlas_common::error::*;
 use atlas_common::node_id::NodeId;
+use atlas_common::ordering::SeqNo;
 use atlas_common::{channel, quiet_unwrap};
 use atlas_communication::stub::RegularNetworkStub;
 use atlas_core::ordering_protocol::OrderProtocolTolerance;
@@ -10,12 +13,9 @@ use atlas_core::reconfiguration_protocol::ReconfigurationProtocol;
 use atlas_smr_application::serialize::ApplicationData;
 use atlas_smr_core::networking::client::SMRClientNetworkNode;
 use atlas_smr_core::serialize::SMRSysMsg;
-use std::sync::{Arc, Mutex};
 use dashmap::DashMap;
+use std::sync::{Arc, Mutex};
 use tracing::error;
-use atlas_common::ordering::SeqNo;
-use crate::client::{get_request_key, register_wrapped_callback, ClientData, RequestCallbackArc};
-use crate::client::{register_callback, Client, ClientConfig, ClientType, RequestCallback};
 
 /// A client implementation that will automagically manage all the sessions required, re-utilizing them
 /// as much as possible
@@ -27,7 +27,7 @@ pub struct ConcurrentClient<RF, D: ApplicationData + 'static, NT: 'static> {
     session_return: ChannelSyncTx<Client<RF, D, NT>>,
     sessions: ChannelSyncRx<Client<RF, D, NT>>,
     cleanup_task: Arc<dyn Fn((SeqNo, Result<D::Reply>)) + Send + Sync>,
-    cleanup_task_data: Arc<DashMap<SeqNo, RequestData<RF, D, NT>>>
+    cleanup_task_data: Arc<DashMap<SeqNo, RequestData<RF, D, NT>>>,
 }
 
 struct RequestData<RF, D: ApplicationData + 'static, NT: 'static> {
@@ -77,13 +77,19 @@ where
     })
 }
 
-pub fn initialize_clean_up<RP, D, NT>(session_return: ChannelSyncTx<Client<RP, D, NT>>,) -> (Arc<dyn Fn((SeqNo, Result<D::Reply>)) + Send + Sync>, Arc<DashMap<SeqNo, RequestData<RP, D, NT>>>)
+pub fn initialize_clean_up<RP, D, NT>(
+    session_return: ChannelSyncTx<Client<RP, D, NT>>,
+) -> (
+    Arc<dyn Fn((SeqNo, Result<D::Reply>)) + Send + Sync>,
+    Arc<DashMap<SeqNo, RequestData<RP, D, NT>>>,
+)
 where
     RP: ReconfigurationProtocol + 'static,
     D: ApplicationData + 'static,
     NT: Send + Sync + 'static,
 {
-    let cleanup_task_data:  Arc<DashMap<SeqNo, RequestData<RP, D, NT>>>  = Arc::new(DashMap::default());
+    let cleanup_task_data: Arc<DashMap<SeqNo, RequestData<RP, D, NT>>> =
+        Arc::new(DashMap::default());
 
     let cleanup_task_data_clone = cleanup_task_data.clone();
 
@@ -91,14 +97,14 @@ where
         let cleanup_data = cleanup_task_data_clone.remove(&session_id);
 
         if let Some((_, request)) = cleanup_data {
-
             match request.callback {
                 RqCallback::ArcCallback(callback) => {
                     callback(reply);
                 }
             }
 
-            let client = request.client_return
+            let client = request
+                .client_return
                 .lock()
                 .unwrap()
                 .take()
@@ -119,8 +125,6 @@ where
     RF: ReconfigurationProtocol,
     NT: 'static,
 {
-
-
     /// Creates a new concurrent client, from an already existing client
     pub fn from_client(client: Client<RF, D, NT>, session_limit: usize) -> Result<Self>
     where
@@ -139,7 +143,7 @@ where
         tx.send(client)?;
 
         let (cleanup_task, cleanup_task_data) = initialize_clean_up::<RF, D, NT>(tx.clone());
-        
+
         Ok(Self {
             id,
             client_data: data,
@@ -158,7 +162,7 @@ where
     fn get_session(&self) -> Result<Client<RF, D, NT>> {
         self.sessions.recv()
     }
-    
+
     fn register_callback_cleanup(&self, session_id: SeqNo, callback: RequestData<RF, D, NT>) {
         self.cleanup_task_data.insert(session_id, callback);
     }
@@ -216,7 +220,7 @@ where
 
             quiet_unwrap!(session_return.send(client));
         });
-        
+
         register_callback(session_id, rq_key, &*self.client_data, callback);
 
         session.update_callback_inner::<T>(request, operation_id);
@@ -243,13 +247,21 @@ where
         let rq_key = get_request_key(session_id, operation_id);
 
         let (return_session_tx, return_session_rx) = channel::oneshot::new_oneshot_channel();
-        
-        self.register_callback_cleanup(session_id, RequestData {
-            client_return: Mutex::new(Some(return_session_rx)),
-            callback: RqCallback::ArcCallback(callback),
-        });
 
-        register_wrapped_callback(session_id, rq_key, &*self.client_data, self.cleanup_task.clone());
+        self.register_callback_cleanup(
+            session_id,
+            RequestData {
+                client_return: Mutex::new(Some(return_session_rx)),
+                callback: RqCallback::ArcCallback(callback),
+            },
+        );
+
+        register_wrapped_callback(
+            session_id,
+            rq_key,
+            &*self.client_data,
+            self.cleanup_task.clone(),
+        );
 
         session.update_callback_inner::<T>(request, operation_id);
 
@@ -257,5 +269,4 @@ where
 
         Ok(())
     }
-
 }
