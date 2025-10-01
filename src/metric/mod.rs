@@ -3,7 +3,6 @@ use atlas_metrics::{MetricLevel, MetricRegistry};
 
 /// Client Metrics module
 /// We will take the 3XX range of metric IDs
-
 pub const CLIENT_RQ_PER_SECOND: &str = "CLIENT_RQ_PER_SECOND";
 pub const CLIENT_RQ_PER_SECOND_ID: usize = 300;
 

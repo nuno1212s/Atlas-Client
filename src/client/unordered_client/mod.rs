@@ -81,7 +81,7 @@ where
 
         let client_data = self.data.clone();
 
-        let callback = Box::new(move |res| {
+        let _callback = Box::new(move |res| {
             let mut connecting_followers = client_data
                 .follower_data
                 .connecting_followers
