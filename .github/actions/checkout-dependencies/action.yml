@@ -38,3 +38,9 @@ runs:
       with:
         repository: nuno1212s/Atlas-Metrics
         path: Atlas-Metrics
+
+    - name: Checkout Atlas-Reconfiguration
+      uses: actions/checkout@v4
+      with:
+        repository: nuno1212s/Atlas-Reconfiguration
+        path: Atlas-Reconfiguration
