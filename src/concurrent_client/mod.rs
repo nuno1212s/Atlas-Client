@@ -1,6 +1,7 @@
 use crate::client;
 use crate::client::{get_request_key, register_wrapped_callback, ClientData, RequestCallbackArc};
 use crate::client::{register_callback, Client, ClientConfig, ClientType, RequestCallback};
+use anyhow::Context;
 use atlas_common::channel::oneshot::OneShotRx;
 use atlas_common::channel::sync::{ChannelSyncRx, ChannelSyncTx};
 use atlas_common::error::*;
@@ -15,7 +16,6 @@ use atlas_smr_core::networking::client::SMRClientNetworkNode;
 use atlas_smr_core::serialize::SMRSysMsg;
 use dashmap::DashMap;
 use std::sync::{Arc, Mutex};
-use anyhow::Context;
 use tracing::error;
 
 pub type CleanUpTask<D: ApplicationData> = dyn Fn((SeqNo, Result<D::Reply>)) + Send + Sync;
@@ -164,8 +164,7 @@ where
     }
 
     fn get_session(&self) -> Result<Client<RF, D, NT>> {
-        self.sessions.recv()
-            .context("Failed to get session")
+        self.sessions.recv().context("Failed to get session")
     }
 
     fn register_callback_cleanup(&self, session_id: SeqNo, callback: RequestData<RF, D, NT>) {

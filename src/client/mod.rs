@@ -15,13 +15,20 @@ use lazy_static::lazy_static;
 use thiserror::Error;
 use tracing::{debug, error, info, warn};
 
+use crate::concurrent_client::CleanUpTask;
+use crate::metric::{
+    CLIENT_RQ_DELIVER_RESPONSE_ID, CLIENT_RQ_LATENCY_ID, CLIENT_RQ_PER_SECOND_ID,
+    CLIENT_RQ_RECV_PER_SECOND_ID, CLIENT_RQ_RECV_TIME_ID, CLIENT_RQ_SEND_TIME_ID,
+    CLIENT_RQ_TIMEOUT_ID, CLIENT_UNORDERED_RQ_LATENCY_ID,
+};
+use crate::timeout_handler::CLITimeoutHandler;
 use atlas_common::channel::sync::ChannelSyncRx;
+use atlas_common::channel::RecvError;
 use atlas_common::crypto::hash::Digest;
 use atlas_common::error::*;
 use atlas_common::node_id::NodeId;
 use atlas_common::ordering::{Orderable, SeqNo};
 use atlas_common::{channel, Err};
-use atlas_common::channel::RecvError;
 use atlas_communication::stub::{
     ModuleIncomingStub, ModuleOutgoingStub, NetworkStub, RegularNetworkStub,
 };
@@ -38,13 +45,6 @@ use atlas_smr_application::serialize::ApplicationData;
 use atlas_smr_core::message::OrderableMessage;
 use atlas_smr_core::networking::client::SMRClientNetworkNode;
 use atlas_smr_core::serialize::{SMRSysMessage, SMRSysMsg};
-use crate::concurrent_client::CleanUpTask;
-use crate::metric::{
-    CLIENT_RQ_DELIVER_RESPONSE_ID, CLIENT_RQ_LATENCY_ID, CLIENT_RQ_PER_SECOND_ID,
-    CLIENT_RQ_RECV_PER_SECOND_ID, CLIENT_RQ_RECV_TIME_ID, CLIENT_RQ_SEND_TIME_ID,
-    CLIENT_RQ_TIMEOUT_ID, CLIENT_UNORDERED_RQ_LATENCY_ID,
-};
-use crate::timeout_handler::CLITimeoutHandler;
 
 use self::unordered_client::{FollowerData, UnorderedClientMode};
 

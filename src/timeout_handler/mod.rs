@@ -9,7 +9,8 @@ pub(crate) struct CLITimeoutHandler {
 
 impl TimeoutWorkerResponder for CLITimeoutHandler {
     fn report_timeouts(&self, timeouts: Vec<Timeout>) -> atlas_common::error::Result<()> {
-        self.tx.send(timeouts)
+        self.tx
+            .send(timeouts)
             .context("Failed to send timeouts to channel")
     }
 }
