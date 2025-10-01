@@ -1,32 +1,40 @@
-name: lint code
+name: pull request
 on:
   pull_request:
   push:
     # Sequence of patterns matched against refs/heads
     branches:
       - 'main'
-      - 'research/**'
-      - 'releases/**'
+
 jobs:
   lint:
     timeout-minutes: 60
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          path: Atlas-Client
+      - uses: ./Atlas-Client/.github/actions/checkout-dependencies
       - uses: Swatinem/rust-cache@v2
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: nightly
+          toolchain: nightly-2025-06-09
           components: rustfmt, clippy
-      - run: |
+      - name: Check versions
+        working-directory: Atlas-Client
+        run: |
           rustup --version
           rustup show
           cargo --version
           cargo fmt --version
           cargo clippy --version
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --locked --workspace --all-targets -- --no-deps
+      - name: Lint formatting
+        working-directory: Atlas-Client
+        run: cargo fmt --all -- --check
+      - name: Lint code
+        working-directory: Atlas-Client
+        run: cargo clippy --all-targets --no-deps -- -D warnings
 
   unit-tests:
     timeout-minutes: 5
@@ -38,7 +46,16 @@ jobs:
       CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@v3
+        with:
+          path: Atlas-Client
+      - uses: ./Atlas-Client/.github/actions/checkout-dependencies
       - uses: Swatinem/rust-cache@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly-2025-06-09
       - uses: taiki-e/install-action@nextest
       - run: cargo build --tests
-      - run: cargo nextest run
+        working-directory: Atlas-Client
+      - run: cargo nextest run --no-tests pass
+        working-directory: Atlas-Client

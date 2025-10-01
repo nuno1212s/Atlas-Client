@@ -9,14 +9,21 @@ use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 use std::time::Instant;
 
-use anyhow::Error;
 use intmap::IntMap;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use thiserror::Error;
 use tracing::{debug, error, info, warn};
 
+use crate::concurrent_client::CleanUpTask;
+use crate::metric::{
+    CLIENT_RQ_DELIVER_RESPONSE_ID, CLIENT_RQ_LATENCY_ID, CLIENT_RQ_PER_SECOND_ID,
+    CLIENT_RQ_RECV_PER_SECOND_ID, CLIENT_RQ_RECV_TIME_ID, CLIENT_RQ_SEND_TIME_ID,
+    CLIENT_RQ_TIMEOUT_ID, CLIENT_UNORDERED_RQ_LATENCY_ID,
+};
+use crate::timeout_handler::CLITimeoutHandler;
 use atlas_common::channel::sync::ChannelSyncRx;
+use atlas_common::channel::RecvError;
 use atlas_common::crypto::hash::Digest;
 use atlas_common::error::*;
 use atlas_common::node_id::NodeId;
@@ -38,13 +45,6 @@ use atlas_smr_application::serialize::ApplicationData;
 use atlas_smr_core::message::OrderableMessage;
 use atlas_smr_core::networking::client::SMRClientNetworkNode;
 use atlas_smr_core::serialize::{SMRSysMessage, SMRSysMsg};
-
-use crate::metric::{
-    CLIENT_RQ_DELIVER_RESPONSE_ID, CLIENT_RQ_LATENCY_ID, CLIENT_RQ_PER_SECOND_ID,
-    CLIENT_RQ_RECV_PER_SECOND_ID, CLIENT_RQ_RECV_TIME_ID, CLIENT_RQ_SEND_TIME_ID,
-    CLIENT_RQ_TIMEOUT_ID, CLIENT_UNORDERED_RQ_LATENCY_ID,
-};
-use crate::timeout_handler::CLITimeoutHandler;
 
 use self::unordered_client::{FollowerData, UnorderedClientMode};
 
@@ -94,6 +94,7 @@ struct GenCallback<P> {
     callback: InnerCallback<P>,
 }
 
+#[allow(dead_code)]
 enum InnerCallback<P> {
     Gen(Box<dyn FnOnce(Result<P>) + Send>),
     Imm(Arc<dyn Fn(Result<P>) + Send + Sync>),
@@ -131,7 +132,7 @@ where
     //May have, so we keep this reference in here
     observer: Arc<Mutex<Option<ObserverClient>>>,
     observer_ready: Mutex<Option<observing_client::Ready>>,*/
-    stats: Option<Arc<ClientPerf>>,
+    _stats: Option<Arc<ClientPerf>>,
 }
 
 pub trait ClientType<RF, D, NT>
@@ -327,7 +328,7 @@ where
 
     let (reconf_tx, reconf_rx) =
         channel::sync::new_bounded_sync(128, Some("Reconfiguration Channel"));
-    let (ntwrk_tx, ntwrk_rx) =
+    let (ntwrk_tx, _ntwrk_rx) =
         channel::sync::new_bounded_sync(128, Some("Network reconfig channel"));
 
     // TODO: Make timeouts actually work properly with the clients (including making the normal
@@ -380,7 +381,7 @@ where
             .collect(),
         reconfig_protocol,
         reconfig_protocol_rx: reconf_rx,
-        stats,
+        _stats: stats,
     });
 
     let task_data = Arc::clone(&data);
@@ -440,9 +441,9 @@ where
     }
 
     pub(super) fn update_inner<T>(
-        &mut self,
+        &'_ mut self,
         operation: D::Request,
-    ) -> Result<ClientRequestFut<D::Reply>>
+    ) -> Result<ClientRequestFut<'_, D::Reply>>
     where
         T: ClientType<RP, D, NT>,
         NT: RegularNetworkStub<SMRSysMsg<D>>,
@@ -460,7 +461,7 @@ where
         let request_info = get_request_info(session_id, &*self.data);
 
         //get the targets that we are supposed to broadcast the message to
-        let (targets, target_count) = T::init_targets(&self);
+        let (targets, target_count) = T::init_targets(self);
 
         let needed_acks = T::needed_responses(self);
 
@@ -980,7 +981,7 @@ where
             let req_key = get_request_key(session_id, rq_id);
 
             {
-                let bucket = get_ready::<RP, D>(session_id, &*data);
+                let bucket = get_ready::<RP, D>(session_id, data);
 
                 let bucket_guard = bucket.lock().unwrap();
 
@@ -1017,7 +1018,7 @@ where
 
             timeouts
                 .into_iter()
-                .group_by(|timeout| timeout.id().mod_id().clone())
+                .chunk_by(|timeout| timeout.id().mod_id().clone())
                 .into_iter()
                 .map(|(mod_id, timeouts)| (mod_id, timeouts.map(ModTimeout::from)))
                 .map(|(mod_id, timeouts)| (mod_id, timeouts.collect::<Vec<_>>()))
@@ -1031,14 +1032,10 @@ where
         }
     }
 
+    #[allow(dead_code)]
     fn receive_reconf_updates(data: &Arc<ClientData<RP, D>>) {
-        while let Ok(update) = data.reconfig_protocol_rx.try_recv() {
-            match update {
-                QuorumUpdateMessage::UpdatedQuorumView(_update) => {}
-                _ => {
-                    todo!()
-                }
-            }
+        while let Ok(_update) = data.reconfig_protocol_rx.try_recv() {
+            todo!()
         }
     }
 }
@@ -1051,7 +1048,7 @@ pub(super) fn get_request_key(session_id: SeqNo, operation_id: SeqNo) -> u64 {
 }
 
 #[inline]
-fn get_correct_vec_for<T>(session_id: SeqNo, vec: &Vec<Mutex<T>>) -> &Mutex<T> {
+fn get_correct_vec_for<T>(session_id: SeqNo, vec: &[Mutex<T>]) -> &Mutex<T> {
     let session_id: usize = session_id.into();
     let index = session_id % vec.len();
 
@@ -1065,7 +1062,7 @@ pub(super) fn register_callback<RF, D: ApplicationData>(
     data: &ClientData<RF, D>,
     callback: RequestCallback<D>,
 ) {
-    let ready = get_ready::<RF, D>(session_id, &*data);
+    let ready = get_ready::<RF, D>(session_id, data);
 
     let callback = GenCallback {
         timed_out: AtomicBool::new(false),
@@ -1080,6 +1077,8 @@ pub(super) fn register_callback<RF, D: ApplicationData>(
     }
 }
 
+///TODO: Finish this operation type
+#[allow(dead_code)]
 #[inline]
 pub(super) fn register_imm_callback<RF, D: ApplicationData>(
     session_id: SeqNo,
@@ -1087,7 +1086,7 @@ pub(super) fn register_imm_callback<RF, D: ApplicationData>(
     data: &ClientData<RF, D>,
     callback: RequestCallbackArc<D>,
 ) {
-    let ready = get_ready::<RF, D>(session_id, &*data);
+    let ready = get_ready::<RF, D>(session_id, data);
 
     let callback = GenCallback {
         timed_out: AtomicBool::new(false),
@@ -1107,9 +1106,9 @@ pub(super) fn register_wrapped_callback<RF, D: ApplicationData>(
     session_id: SeqNo,
     request_key: u64,
     data: &ClientData<RF, D>,
-    callback: Arc<dyn Fn((SeqNo, Result<D::Reply>)) + Send + Sync>,
+    callback: Arc<CleanUpTask<D>>,
 ) {
-    let ready = get_ready::<RF, D>(session_id, &*data);
+    let ready = get_ready::<RF, D>(session_id, data);
 
     let callback = GenCallback {
         timed_out: AtomicBool::new(false),
@@ -1167,7 +1166,7 @@ pub enum ClientError {
     #[error("Could not get f + 1 equal responses")]
     UnequalResponses,
     #[error("Error receiving reconfiguration message: {0:?}")]
-    ReconfigurationState(#[from] Error),
+    ReconfigurationState(#[from] RecvError),
     #[error("Failed connecting to node {0:?}")]
     AlreadyConnectingToNode(NodeId),
     #[error("Failed, already connected to node {0:?}")]

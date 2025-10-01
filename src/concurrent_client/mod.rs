@@ -1,6 +1,7 @@
 use crate::client;
 use crate::client::{get_request_key, register_wrapped_callback, ClientData, RequestCallbackArc};
 use crate::client::{register_callback, Client, ClientConfig, ClientType, RequestCallback};
+use anyhow::Context;
 use atlas_common::channel::oneshot::OneShotRx;
 use atlas_common::channel::sync::{ChannelSyncRx, ChannelSyncTx};
 use atlas_common::error::*;
@@ -17,6 +18,8 @@ use dashmap::DashMap;
 use std::sync::{Arc, Mutex};
 use tracing::error;
 
+pub type CleanUpTask<D: ApplicationData> = dyn Fn((SeqNo, Result<D::Reply>)) + Send + Sync;
+
 /// A client implementation that will automagically manage all the sessions required, re-utilizing them
 /// as much as possible
 /// Can be cloned in order to be used in multiple locations simultaneously
@@ -26,7 +29,7 @@ pub struct ConcurrentClient<RF, D: ApplicationData + 'static, NT: 'static> {
     client_data: Arc<ClientData<RF, D>>,
     session_return: ChannelSyncTx<Client<RF, D, NT>>,
     sessions: ChannelSyncRx<Client<RF, D, NT>>,
-    cleanup_task: Arc<dyn Fn((SeqNo, Result<D::Reply>)) + Send + Sync>,
+    cleanup_task: Arc<CleanUpTask<D>>,
     cleanup_task_data: Arc<DashMap<SeqNo, RequestData<RF, D, NT>>>,
 }
 
@@ -77,10 +80,11 @@ where
     })
 }
 
-pub fn initialize_clean_up<RP, D, NT>(
+#[allow(clippy::type_complexity)]
+fn initialize_clean_up<RP, D, NT>(
     session_return: ChannelSyncTx<Client<RP, D, NT>>,
 ) -> (
-    Arc<dyn Fn((SeqNo, Result<D::Reply>)) + Send + Sync>,
+    Arc<CleanUpTask<D>>,
     Arc<DashMap<SeqNo, RequestData<RP, D, NT>>>,
 )
 where
@@ -160,7 +164,7 @@ where
     }
 
     fn get_session(&self) -> Result<Client<RF, D, NT>> {
-        self.sessions.recv()
+        self.sessions.recv().context("Failed to get session")
     }
 
     fn register_callback_cleanup(&self, session_id: SeqNo, callback: RequestData<RF, D, NT>) {
