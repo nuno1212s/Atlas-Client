@@ -44,3 +44,9 @@ runs:
       with:
         repository: nuno1212s/Atlas-Reconfiguration
         path: Atlas-Reconfiguration
+
+    - name: Checkout Atlas-capnp
+      uses: actions/checkout@v4
+      with:
+        repository: nuno1212s/Atlas-capnp
+        path: Atlas-capnp
